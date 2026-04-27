@@ -10,7 +10,7 @@ O projeto foi construído com **Vite + React** e compilado para o formato que o 
 ┌──────────────────────────────────────────────────────────────────┐
 │  FIGMA DESKTOP                                                   │
 │                                                                  │
-│  ┌──────────────┐    postMessage    ┌──────────────────────────┐ │
+│  ┌───────────────┐   postMessage    ┌──────────────────────────┐ │
 │  │   Sandbox     │ ◄──────────────► │   UI (iframe)            │ │
 │  │   code.js     │                  │   index.html (React)     │ │
 │  │               │                  │                          │ │
@@ -18,7 +18,7 @@ O projeto foi construído com **Vite + React** e compilado para o formato que o 
 │  │  • Extração   │                  │  • drupalClient.js ──────┼─┼──► Drupal API
 │  │  • Sync       │                  │  • useFigmaMessages.js   │ │
 │  │  • nodeMapper │                  │  • Design System (CSS)   │ │
-│  └──────────────┘                  └──────────────────────────┘ │
+│  └───────────────┘                  └──────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────┘
 ```
 

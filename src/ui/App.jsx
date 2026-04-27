@@ -212,7 +212,10 @@ export default function App() {
   );
 
   const handleSaveApiKey = useCallback(
-    (key) => figma.saveApiKey(key),
+    (key) => {
+      figma.saveApiKey(key);
+      showDevStatus('API Key salva com sucesso!', 'success');
+    },
     [figma.saveApiKey]
   );
 

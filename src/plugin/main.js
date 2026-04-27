@@ -172,18 +172,21 @@ async function atualizarPropriedades(schema) {
 
   if (rootNode.type === 'COMPONENT') {
     moduleComp = rootNode;
+  } else if (rootNode.type === 'COMPONENT_SET') {
+    moduleComp = rootNode;
   } else if (rootNode.type === 'INSTANCE') {
     const main = rootNode.mainComponent;
     if (!main) {
       figma.notify('Instância sem componente!');
       return;
     }
-    moduleComp = main;
+    // Se a instância for parte de um Component Set, tentamos pegar o Set pai
+    moduleComp = main.parent && main.parent.type === 'COMPONENT_SET' ? main.parent : main;
   } else if (rootNode.type === 'FRAME') {
     moduleComp = convertFrameToComponent(rootNode);
     figma.notify('Frame convertido para Component.');
   } else {
-    figma.notify('Selecione um Frame, Component ou Instance.');
+    figma.notify('Selecione um Component Set, Component, Instance ou Frame.');
     return;
   }
 
@@ -209,11 +212,13 @@ async function atualizarPropriedades(schema) {
         );
         addedCount++;
 
-        const textNode = moduleComp.findOne(
+        // ★ Linka TODOS os nós de texto com o mesmo nome (Desktop e Mobile)
+        const textNodes = moduleComp.findAll(
           (n) => n.type === 'TEXT' && n.name.trim() === prop.name
         );
-        if (textNode) {
-          textNode.componentPropertyReferences = { characters: propId };
+        
+        for (const textNode of textNodes) {
+          textNode.componentPropertyReferences = { ...textNode.componentPropertyReferences, characters: propId };
           linkedCount++;
         }
       } else if (prop.type === 'BOOLEAN') {
