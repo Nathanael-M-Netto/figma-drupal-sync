@@ -190,7 +190,7 @@ export default function DevSettingsTab({
         </div>
       </div>
 
-      {/* Botões de schema */}
+      {/* Botões de schema e sync */}
       <div className="flex-row" style={{ marginBottom: '8px' }}>
         <button
           className="btn btn-outline"
@@ -198,12 +198,20 @@ export default function DevSettingsTab({
         >
           Carregar JSON
         </button>
-        {schemaStatus.loaded && (
+        <button
+          className="btn btn-primary"
+          onClick={onSyncProps}
+        >
+          Sync Local
+        </button>
+      </div>
+      {schemaStatus.loaded && (
+        <div className="flex-row" style={{ marginBottom: '14px' }}>
           <button className="btn btn-outline" onClick={onClearSchema}>
             Limpar Schema
           </button>
-        )}
-      </div>
+        </div>
+      )}
       {schemaStatus.loaded && (
         <div style={{ marginBottom: '14px' }}>
           <button className="btn btn-success" onClick={onUpdateProps}>

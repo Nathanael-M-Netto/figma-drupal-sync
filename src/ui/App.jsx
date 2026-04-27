@@ -346,6 +346,7 @@ export default function App() {
           onApplyManualJson={handleApplyManualJson}
           onDevDeploy={handleDevDeploy}
           onDevDownload={handleDevDownload}
+          onSyncProps={figma.syncPropsLocal}
           status={devStatus}
         />
       )}

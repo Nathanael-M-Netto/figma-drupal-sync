@@ -31,6 +31,7 @@ figma.showUI(__html__, { width: 460, height: 720 });
 
 // --- State ---
 let currentSchema = null;
+let lastExtractedNodeMap = null; // Guarda o mapa da última seleção para Sync Local focado
 
 // ══════════════════════════════════════════════════════
 // NID PERSISTENCE (salvo na raiz do documento)
@@ -104,30 +105,57 @@ function convertFrameToComponent(frame) {
 // ══════════════════════════════════════════════════════
 
 /**
- * Aplica dados do Drupal nos nós do Figma.
+ * Aplica dados do Drupal (ou local) nos nós do Figma.
  *
- * ★ MULTI-MAPEAMENTO: Para cada chave do payload, busca TODOS os
- *   nós com aquele nome via findAll(). Se TXT_TITULO existe no
- *   Desktop e no Mobile, AMBOS são atualizados.
+ * Se nodeMapScope for fornecido (Sync Local), aplica restrito àquela seleção.
+ * Se não (Sync da API), busca globalmente na página usando findAll.
  *
- * @param {Object} payload - Dados {key: value} do Drupal
+ * @param {Object} payload - Dados {key: value}
+ * @param {Map} [nodeMapScope] - Mapa opcional para restringir o escopo
  * @returns {Promise<number>} Quantidade de nós atualizados
  */
-async function syncFromPayload(payload) {
+async function syncFromPayload(payload, nodeMapScope = null) {
   let updatedCount = 0;
 
   for (const [key, value] of Object.entries(payload)) {
     if (value === null || value === undefined) continue;
 
-    // ★ MULTI-MAPEAMENTO: findAll retorna TODOS os nós com esse nome
-    const nodes = figma.currentPage.findAll((n) => n.name === key);
+    // ★ Busca no escopo restrito ou globalmente na página inteira
+    const nodes = nodeMapScope 
+      ? (nodeMapScope.get(key) || []) 
+      : figma.currentPage.findAll((n) => n.name === key);
 
-    // ★ Itera sobre o ARRAY inteiro — atualiza Desktop, Mobile, e qualquer
-    //   outra instância que compartilhe o mesmo nome
     for (const node of nodes) {
       if (node.type === 'TEXT') {
         const success = await applyTextToNode(node, value);
         if (success) updatedCount++;
+      } else if (node.type === 'INSTANCE' && typeof value === 'object') {
+        // Aplica propriedades de componente (variantes, booleans) no INSTANCE
+        try {
+          const currentProps = node.componentProperties;
+          const newProps = {};
+          let hasChange = false;
+
+          for (const [k, v] of Object.entries(value)) {
+            // Busca o nome real da propriedade (ex: "PHOTO_CIRCLE#23:45")
+            const rawKey = Object.keys(currentProps).find(ck => ck.split('#')[0].trim() === k);
+            if (rawKey) {
+              let finalVal = v;
+              if (currentProps[rawKey].type === 'BOOLEAN') {
+                finalVal = (v === 'true' || v === true);
+              }
+              newProps[rawKey] = finalVal;
+              hasChange = true;
+            }
+          }
+
+          if (hasChange) {
+            node.setProperties(newProps);
+            updatedCount++;
+          }
+        } catch (err) {
+          console.error(`Erro ao atualizar instância "${node.name}":`, err);
+        }
       }
     }
   }
@@ -258,62 +286,91 @@ async function atualizarPropriedades(schema) {
 
 /**
  * Entry point da extração. Chamada quando a seleção muda.
- * Delega para modo com schema ou modo livre.
+ * Suporta seleção múltipla (Ctrl+A) ou única, identificando e combinando módulos irmãos.
  */
 function lerTextosDaTela() {
   const selection = figma.currentPage.selection;
   if (selection.length === 0) {
     figma.ui.postMessage({
       status: 'error',
-      message: 'Selecione o módulo que deseja exportar.',
+      message: 'Selecione pelo menos um módulo que deseja exportar/sincronizar.',
     });
     return;
   }
 
-  let moduleName = 'modo_livre';
-  let nodesToExtract = [...selection];
+  // Agrupa a seleção usando a mesma lógica de buildModuleTree
+  const modules = buildModuleTree({ children: selection });
 
-  if (selection[0] && selection[0].name) {
-    const rawName = selection[0].name.trim().toLowerCase();
-    moduleName = rawName.replace(/(_desk|_desktop|_mobile|_mob)$/, '');
+  if (modules.length === 0) {
+    // Modo de fallback caso não identifique módulos estruturados (ex: selecionou apenas um texto solto)
+    const nodeMap = buildNodeMap(selection);
+    lastExtractedNodeMap = nodeMap;
 
-    // Se a seleção for um componente com sufixo (ex: _desk), vamos buscar o irmão _mobile
-    // e extrair as propriedades dos dois simultaneamente!
-    if (rawName !== moduleName) {
-      const parent = selection[0].parent;
-      if (parent && 'children' in parent) {
-        const siblings = parent.children.filter((n) => {
-          const nName = n.name.trim().toLowerCase();
-          return nName !== rawName && nName.replace(/(_desk|_desktop|_mobile|_mob)$/, '') === moduleName;
-        });
-        
-        for (const sib of siblings) {
-          if (!nodesToExtract.includes(sib)) {
-            nodesToExtract.push(sib);
-          }
-        }
-      }
+    let moduleName = 'modo_livre';
+    if (selection[0] && selection[0].name) {
+      moduleName = selection[0].name.trim().toLowerCase().replace(/(_desk|_desktop|_mobile|_mob)$/, '');
     }
+
+    if (currentSchema) {
+      const { data, meta } = extractWithSchema(nodeMap, currentSchema);
+      figma.ui.postMessage({
+        status: 'success',
+        moduleName,
+        data,
+        meta,
+        schemaMode: true,
+      });
+    } else {
+      const data = extractDataFromNodeMap(nodeMap);
+      figma.ui.postMessage({
+        status: 'success',
+        moduleName,
+        data,
+        schemaMode: false,
+      });
+    }
+    return;
   }
 
-  // ★ MULTI-MAPEAMENTO: Agrupa nós do Desk e Mobile selecionados
-  const nodeMap = buildNodeMap(nodesToExtract);
+  // Se a seleção contém múltiplos módulos distintos
+  if (modules.length > 1) {
+    // Junta os nodeMaps de todos para permitir Sync Local de múltiplos módulos de uma vez
+    const combinedNodeMap = new Map();
+    for (const mod of modules) {
+      for (const [k, v] of mod.nodeMap.entries()) {
+        if (!combinedNodeMap.has(k)) combinedNodeMap.set(k, []);
+        combinedNodeMap.get(k).push(...v);
+      }
+    }
+    lastExtractedNodeMap = combinedNodeMap;
 
-  if (currentSchema) {
-    const { data, meta } = extractWithSchema(nodeMap, currentSchema);
     figma.ui.postMessage({
       status: 'success',
-      moduleName,
+      moduleName: 'Múltiplos Módulos',
+      data: { _modules: modules.map(m => m.name) },
+      schemaMode: false,
+    });
+    return;
+  }
+
+  // Seleção contém exatamente 1 módulo (que já pode ter agrupado _desk e _mobile)
+  const mod = modules[0];
+  lastExtractedNodeMap = mod.nodeMap;
+
+  if (currentSchema) {
+    const { data, meta } = extractWithSchema(mod.nodeMap, currentSchema);
+    figma.ui.postMessage({
+      status: 'success',
+      moduleName: mod.name,
       data,
       meta,
       schemaMode: true,
     });
   } else {
-    const data = extractDataFromNodeMap(nodeMap);
     figma.ui.postMessage({
       status: 'success',
-      moduleName,
-      data,
+      moduleName: mod.name,
+      data: mod.data,
       schemaMode: false,
     });
   }
@@ -387,6 +444,22 @@ figma.ui.onmessage = async (msg) => {
   } else if (msg.type === 'run-sync-manual') {
     const count = await syncFromPayload(msg.data);
     figma.notify(`Sync manual concluído: ${count} campos atualizados.`);
+  } else if (msg.type === 'sync-props-local') {
+    // ★ SYNC LOCAL (Desk <-> Mobile) apenas nos nós atualmente selecionados
+    if (!lastExtractedNodeMap) {
+      figma.notify('Nenhum dado selecionado para sincronizar.');
+      return;
+    }
+    // Extrai os dados unificados da seleção atual
+    let dataToApply = extractDataFromNodeMap(lastExtractedNodeMap);
+    if (currentSchema) {
+      const result = extractWithSchema(lastExtractedNodeMap, currentSchema);
+      dataToApply = result.data;
+    }
+    
+    // Reaplica esses mesmos dados no escopo da seleção
+    const count = await syncFromPayload(dataToApply, lastExtractedNodeMap);
+    figma.notify(`Sync Local concluído: ${count} propriedades igualadas.`);
   }
 
   // --- Deploy ---

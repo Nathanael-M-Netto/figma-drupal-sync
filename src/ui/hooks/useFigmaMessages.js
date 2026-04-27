@@ -171,6 +171,10 @@ export function useFigmaMessages() {
     postToFigma({ type: 'run-sync-manual', data });
   }, []);
 
+  const syncPropsLocal = useCallback(() => {
+    postToFigma({ type: 'sync-props-local' });
+  }, []);
+
   const saveApiKey = useCallback((key) => {
     setApiKey(key);
     postToFigma({ type: 'save-api-key', key });
@@ -219,6 +223,7 @@ export function useFigmaMessages() {
     requestSync,
     applySyncData,
     applySyncManual,
+    syncPropsLocal,
     saveApiKey,
     readFullPage,
     showStatus,
