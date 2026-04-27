@@ -60,13 +60,16 @@ export function buildNodeMap(rootNodes) {
 // LEITURA HIERÁRQUICA DE MÓDULOS
 // ══════════════════════════════════════════════════════
 
+export function getBaseModuleName(name) {
+  return name.trim().toLowerCase().replace(/(_desk|_desktop|_mobile|_mob)$/, '');
+}
+
 /**
  * Lê a página inteira do Figma e retorna uma árvore hierárquica
  * de módulos, na ORDEM VISUAL (sorted by Y position, top → bottom).
  *
- * Cada módulo é identificado por:
- * - Ser um top-level frame na página
- * - OU ter nome com prefixo MOD_, COMP_, ou modulo_
+ * Módulos com sufixos (_desk, _mobile) são combinados em um único módulo
+ * caso compartilhem o mesmo nome base.
  *
  * @param {PageNode} page - Página atual do Figma
  * @returns {Array<{name: string, order: number, nodeMap: Map, data: Object}>}
@@ -79,19 +82,46 @@ export function buildModuleTree(page) {
   // Ordena por posição Y (de cima para baixo na tela)
   const sorted = [...topFrames].sort((a, b) => a.y - b.y);
 
-  const modules = sorted.map((frame, index) => {
+  const modules = [];
+  const moduleMap = new Map();
+
+  for (const frame of sorted) {
+    const rawName = frame.name.trim().toLowerCase();
+    const baseName = getBaseModuleName(rawName);
+
+    // Considera apenas nós que parecem ser módulos
+    if (!baseName.startsWith('mod_') && !baseName.startsWith('comp_') && !baseName.startsWith('modulo_')) {
+      continue;
+    }
+
     const nodeMap = buildNodeMap([frame]);
     const data = extractDataFromNodeMap(nodeMap);
 
-    return {
-      name: frame.name.trim().toLowerCase(),
-      order: index,
-      y: frame.y,
-      nodeId: frame.id,
-      nodeMap,  // ★ Preserva o mapa para aplicar valores depois
-      data,
-    };
-  });
+    if (moduleMap.has(baseName)) {
+      // Combina os dados com o módulo existente (ex: junta _mobile com o _desk)
+      const existing = moduleMap.get(baseName);
+      existing.data = { ...existing.data, ...data };
+      
+      // Combina os nós no nodeMap para aplicar valores corretamente no sync
+      for (const [k, v] of nodeMap.entries()) {
+        if (!existing.nodeMap.has(k)) {
+          existing.nodeMap.set(k, []);
+        }
+        existing.nodeMap.get(k).push(...v);
+      }
+    } else {
+      const newModule = {
+        name: baseName,
+        order: modules.length,
+        y: frame.y,
+        nodeId: frame.id,
+        nodeMap,
+        data,
+      };
+      modules.push(newModule);
+      moduleMap.set(baseName, newModule);
+    }
+  }
 
   return modules;
 }

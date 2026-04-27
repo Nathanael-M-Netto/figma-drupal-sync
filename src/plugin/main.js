@@ -270,27 +270,46 @@ function lerTextosDaTela() {
     return;
   }
 
-  // ★ MULTI-MAPEAMENTO: Usa buildNodeMap para agrupar nós por nome
-  const nodeMap = buildNodeMap(selection);
+  let moduleName = 'modo_livre';
+  let nodesToExtract = [...selection];
+
+  if (selection[0] && selection[0].name) {
+    const rawName = selection[0].name.trim().toLowerCase();
+    moduleName = rawName.replace(/(_desk|_desktop|_mobile|_mob)$/, '');
+
+    // Se a seleção for um componente com sufixo (ex: _desk), vamos buscar o irmão _mobile
+    // e extrair as propriedades dos dois simultaneamente!
+    if (rawName !== moduleName) {
+      const parent = selection[0].parent;
+      if (parent && 'children' in parent) {
+        const siblings = parent.children.filter((n) => {
+          const nName = n.name.trim().toLowerCase();
+          return nName !== rawName && nName.replace(/(_desk|_desktop|_mobile|_mob)$/, '') === moduleName;
+        });
+        
+        for (const sib of siblings) {
+          if (!nodesToExtract.includes(sib)) {
+            nodesToExtract.push(sib);
+          }
+        }
+      }
+    }
+  }
+
+  // ★ MULTI-MAPEAMENTO: Agrupa nós do Desk e Mobile selecionados
+  const nodeMap = buildNodeMap(nodesToExtract);
 
   if (currentSchema) {
     const { data, meta } = extractWithSchema(nodeMap, currentSchema);
     figma.ui.postMessage({
       status: 'success',
-      moduleName: currentSchema.componentName.toLowerCase(),
+      moduleName,
       data,
       meta,
       schemaMode: true,
     });
   } else {
     const data = extractDataFromNodeMap(nodeMap);
-
-    // Detecta o nome do módulo pela seleção
-    let moduleName = 'modo_livre';
-    if (selection[0] && selection[0].name) {
-      moduleName = selection[0].name.trim().toLowerCase();
-    }
-
     figma.ui.postMessage({
       status: 'success',
       moduleName,
