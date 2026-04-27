@@ -1,0 +1,23 @@
+{
+    "name": "TIM Cohesion Export",
+    "id": "1617978249353556260",
+    "api": "1.0.0",
+    "main": "dist/code.js",
+    "ui": "dist/index.html",
+    "capabilities": [],
+    "enableProposedApi": false,
+    "documentAccess": "dynamic-page",
+    "editorType": [
+        "figma"
+    ],
+    "networkAccess": {
+        "allowedDomains": [
+            "https://tim-agentic-cms-api-dev.mangowave-c667a091.eastus.azurecontainerapps.io"
+        ],
+        "devAllowedDomains": [
+            "http://localhost:8000",
+            "https://tim-agentic-cms-api-dev.mangowave-c667a091.eastus.azurecontainerapps.io"
+        ],
+        "reasoning": "O plugin requer acesso a rede para realizar o deploy e sync de dados diretamente com a API do CMS Headless da TIM."
+    }
+}

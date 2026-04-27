@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Backup dos arquivos originais (v1.0 monolito)
+_backup/
+
+# Arquivos legados do monolito (substituídos pela arquitetura Vite+React)
+code.js
+code.ts
+ui.html
+tsconfig.json
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/

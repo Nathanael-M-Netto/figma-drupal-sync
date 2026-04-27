@@ -1,0 +1,26 @@
+{
+  "name": "figma-drupal-sync",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Plugin Figma para sincronização bidirecional com Drupal CMS",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:ui": "vite build",
+    "build:plugin": "vite build --config vite.config.plugin.js",
+    "build": "npm run build:ui && npm run build:plugin",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.123.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.0.3"
+  }
+}

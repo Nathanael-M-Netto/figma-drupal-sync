@@ -1,0 +1,580 @@
+/* ══════════════════════════════════════════════════════
+   FIGMA-NATIVE DESIGN SYSTEM — Migrado do ui.html
+   ══════════════════════════════════════════════════════ */
+
+:root {
+  --bg: var(--figma-color-bg, #2c2c2c);
+  --bg-hover: var(--figma-color-bg-hover, #383838);
+  --bg-secondary: var(--figma-color-bg-secondary, #1e1e1e);
+  --text: var(--figma-color-text, #e4e4e4);
+  --text-secondary: var(--figma-color-text-secondary, #999);
+  --text-tertiary: var(--figma-color-text-tertiary, #666);
+  --border: var(--figma-color-border, #444);
+  --brand: var(--figma-color-bg-brand, #0d99ff);
+  --brand-hover: #0b87e0;
+  --success: #2ea043;
+  --success-soft: rgba(46, 160, 67, 0.12);
+  --danger: #f85149;
+  --danger-soft: rgba(248, 81, 73, 0.12);
+  --purple: #a371f7;
+  --purple-hover: #8b5cf6;
+  --purple-soft: rgba(163, 113, 247, 0.12);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-secondary);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ── Tab Bar ───────────────────────────── */
+.tab-bar {
+  display: flex;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all var(--transition);
+  letter-spacing: 0.3px;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.tab-btn.active {
+  color: var(--text);
+  border-bottom-color: var(--brand);
+}
+
+.tab-btn.active-dev {
+  border-bottom-color: var(--purple);
+}
+
+.tab-content {
+  display: none;
+  padding: 20px;
+  min-height: calc(100vh - 45px);
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* ── Cards ─────────────────────────────── */
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  margin-bottom: 14px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.card-header h3 {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── Inputs ─────────────────────────────── */
+.input-group {
+  margin-bottom: 14px;
+}
+
+.input-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.input-field {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12px;
+  transition: border-color var(--transition);
+  outline: none;
+}
+
+.input-field:focus {
+  border-color: var(--brand);
+}
+
+textarea.input-field {
+  height: 120px;
+  resize: vertical;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+}
+
+/* ── Buttons ───────────────────────────── */
+.btn {
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+  transition: all var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--brand-hover);
+  box-shadow: 0 2px 12px rgba(13, 153, 255, 0.25);
+}
+
+.btn-deploy {
+  background: var(--purple);
+  color: #fff;
+}
+
+.btn-deploy:hover {
+  background: var(--purple-hover);
+  box-shadow: 0 2px 12px rgba(163, 113, 247, 0.25);
+}
+
+.btn-success {
+  background: var(--success);
+  color: #fff;
+}
+
+.btn-success:hover {
+  background: #28903b;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.btn-outline:hover {
+  border-color: var(--text-secondary);
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+
+.btn-danger-outline:hover {
+  background: var(--danger-soft);
+}
+
+.btn-lg {
+  padding: 14px;
+  font-size: 13px;
+  border-radius: var(--radius-md);
+}
+
+/* ── NID Badge ──────────────────────────── */
+.nid-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--purple-soft);
+  border: 1px solid rgba(163, 113, 247, 0.3);
+  color: var(--purple);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  letter-spacing: 0.5px;
+}
+
+.nid-badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+  animation: pulse 2s infinite;
+}
+
+/* ── Status Messages ────────────────────── */
+.status-bar {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  margin-top: 10px;
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.status-bar.info {
+  background: rgba(13, 153, 255, 0.1);
+  color: var(--brand);
+  border: 1px solid rgba(13, 153, 255, 0.2);
+}
+
+.status-bar.success {
+  background: var(--success-soft);
+  color: var(--success);
+  border: 1px solid rgba(46, 160, 67, 0.2);
+}
+
+.status-bar.error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid rgba(248, 81, 73, 0.2);
+}
+
+/* ── Modal ──────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+  animation: slideUp 0.3s ease;
+}
+
+.modal-box h3 {
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.modal-box .modal-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.modal-actions .btn {
+  flex: 1;
+}
+
+/* ── Property List ──────────────────────── */
+.prop-list {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+
+.prop-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.prop-item:last-child {
+  border-bottom: none;
+}
+
+.prop-name {
+  font-weight: 600;
+  color: var(--brand);
+  white-space: nowrap;
+}
+
+.prop-value {
+  color: var(--success);
+  word-break: break-all;
+}
+
+.prop-value.missing {
+  color: var(--danger);
+  font-style: italic;
+}
+
+.type-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.badge-TEXT {
+  background: rgba(46, 160, 67, 0.15);
+  color: #58d68d;
+}
+
+.badge-BOOLEAN {
+  background: rgba(13, 153, 255, 0.15);
+  color: #5dade2;
+}
+
+.badge-VARIANT {
+  background: var(--purple-soft);
+  color: var(--purple);
+}
+
+/* ── Schema Indicator ───────────────────── */
+.schema-indicator {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  margin-bottom: 14px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.schema-loaded {
+  background: var(--success-soft);
+  border: 1px solid rgba(46, 160, 67, 0.2);
+  color: var(--success);
+}
+
+.schema-free {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--text-tertiary);
+}
+
+/* ── Section Titles ─────────────────────── */
+.section-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+  margin-top: 4px;
+}
+
+/* ── Divider ────────────────────────────── */
+.divider {
+  border-top: 1px solid var(--border);
+  margin: 18px 0;
+}
+
+/* ── Binding Area ─────────────────────── */
+.bind-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  animation: fadeIn 0.4s ease;
+}
+
+.bind-area h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.bind-area p {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 24px;
+  max-width: 280px;
+}
+
+.bind-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 100%;
+  box-shadow: var(--shadow);
+}
+
+/* ── Bound Header ─────────────────────── */
+.bound-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bound-header .label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.bound-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* ── Module Chip ───────────────────────── */
+.module-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.module-chip .mc-label {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.module-chip input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+  font-family: inherit;
+}
+
+/* ── Utility Classes ─────────────────── */
+.flex-row {
+  display: flex;
+  gap: 8px;
+}
+
+.flex-row > * {
+  flex: 1;
+}
+
+.mt-8 {
+  margin-top: 8px;
+}
+
+.mt-12 {
+  margin-top: 12px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ── Animations ─────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
