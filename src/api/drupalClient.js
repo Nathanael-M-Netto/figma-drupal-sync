@@ -11,8 +11,7 @@
  * NÃO pode fazer requisições HTTP.
  */
 
-const API_BASE_URL =
-  'https://tim-agentic-cms-api-dev.mangowave-c667a091.eastus.azurecontainerapps.io/api';
+  'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io/api';
 
 // ══════════════════════════════════════════════════════
 // CLIENTE HTTP
