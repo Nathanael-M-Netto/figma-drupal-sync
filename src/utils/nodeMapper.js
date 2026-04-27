@@ -171,7 +171,8 @@ export function extractWithSchema(nodeMap, schema) {
     }
   }
 
-  for (const prop of schema.properties) {
+  const propertiesList = schema.properties || schema.schema?.properties || [];
+  for (const prop of propertiesList) {
     if (prop.type === 'SLOT') continue;
 
     let found = false;

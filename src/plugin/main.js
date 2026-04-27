@@ -193,7 +193,8 @@ async function atualizarPropriedades(schema) {
   let addedCount = 0;
   let linkedCount = 0;
 
-  for (const prop of schema.properties) {
+  const propertiesList = schema.properties || schema.schema?.properties || [];
+  for (const prop of propertiesList) {
     if (prop.type === 'SLOT') continue;
 
     const defs = moduleComp.componentPropertyDefinitions;
