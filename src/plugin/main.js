@@ -189,86 +189,79 @@ async function syncPageFromPayload(modules) {
 async function atualizarPropriedades(schema) {
   const selection = figma.currentPage.selection;
   if (selection.length === 0) {
-    figma.notify('Selecione o módulo primeiro!');
+    figma.notify('Selecione os módulos primeiro!');
     return;
   }
 
   await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
 
-  const rootNode = selection[0];
-  let moduleComp;
-
-  if (rootNode.type === 'COMPONENT') {
-    moduleComp = rootNode;
-  } else if (rootNode.type === 'COMPONENT_SET') {
-    moduleComp = rootNode;
-  } else if (rootNode.type === 'INSTANCE') {
-    const main = rootNode.mainComponent;
-    if (!main) {
-      figma.notify('Instância sem componente!');
-      return;
-    }
-    // Se a instância for parte de um Component Set, tentamos pegar o Set pai
-    moduleComp = main.parent && main.parent.type === 'COMPONENT_SET' ? main.parent : main;
-  } else if (rootNode.type === 'FRAME') {
-    moduleComp = convertFrameToComponent(rootNode);
-    figma.notify('Frame convertido para Component.');
-  } else {
-    figma.notify('Selecione um Component Set, Component, Instance ou Frame.');
-    return;
-  }
-
   let addedCount = 0;
   let linkedCount = 0;
 
-  const propertiesList = schema.properties || schema.schema?.properties || [];
-  for (const prop of propertiesList) {
-    if (prop.type === 'SLOT') continue;
+  for (const rootNode of selection) {
+    let moduleComp;
 
-    const defs = moduleComp.componentPropertyDefinitions;
-    const exists = Object.keys(defs).some(
-      (k) => k.split('#')[0].trim() === prop.name
-    );
-    if (exists) continue;
-
-    try {
-      if (prop.type === 'TEXT') {
-        const safeDefault = String(prop.defaultValue || 'Texto');
-        const propId = moduleComp.addComponentProperty(
-          prop.name,
-          'TEXT',
-          safeDefault
-        );
-        addedCount++;
-
-        // ★ Linka TODOS os nós de texto com o mesmo nome (Desktop e Mobile)
-        const textNodes = moduleComp.findAll(
-          (n) => n.type === 'TEXT' && n.name.trim() === prop.name
-        );
-        
-        for (const textNode of textNodes) {
-          textNode.componentPropertyReferences = { ...textNode.componentPropertyReferences, characters: propId };
-          linkedCount++;
-        }
-      } else if (prop.type === 'BOOLEAN') {
-        moduleComp.addComponentProperty(
-          prop.name,
-          'BOOLEAN',
-          prop.defaultValue !== false
-        );
-        addedCount++;
-      } else if (prop.type === 'VARIANT') {
-        const defaultVal =
-          (prop.options && prop.options[0]) || 'Padrao';
-        moduleComp.addComponentProperty(prop.name, 'TEXT', defaultVal);
-        addedCount++;
-      }
-    } catch (err) {
-      console.error(`Erro ao adicionar "${prop.name}":`, err);
+    if (rootNode.type === 'COMPONENT') {
+      moduleComp = rootNode;
+    } else if (rootNode.type === 'COMPONENT_SET') {
+      moduleComp = rootNode;
+    } else if (rootNode.type === 'INSTANCE') {
+      const main = rootNode.mainComponent;
+      if (!main) continue;
+      moduleComp = main.parent && main.parent.type === 'COMPONENT_SET' ? main.parent : main;
+    } else if (rootNode.type === 'FRAME') {
+      moduleComp = convertFrameToComponent(rootNode);
+    } else {
+      continue;
     }
+
+    const propertiesList = schema.properties || schema.schema?.properties || [];
+    for (const prop of propertiesList) {
+      if (prop.type === 'SLOT') continue;
+
+      const defs = moduleComp.componentPropertyDefinitions;
+      const exists = Object.keys(defs).some(
+        (k) => k.split('#')[0].trim() === prop.name
+      );
+      if (exists) continue;
+
+      try {
+        if (prop.type === 'TEXT') {
+          const safeDefault = String(prop.defaultValue || 'Texto');
+          const propId = moduleComp.addComponentProperty(
+            prop.name,
+            'TEXT',
+            safeDefault
+          );
+          addedCount++;
+
+          const textNodes = moduleComp.findAll(
+            (n) => n.type === 'TEXT' && n.name.trim() === prop.name
+          );
+          
+          for (const textNode of textNodes) {
+            textNode.componentPropertyReferences = { ...textNode.componentPropertyReferences, characters: propId };
+            linkedCount++;
+          }
+        } else if (prop.type === 'BOOLEAN') {
+          moduleComp.addComponentProperty(
+            prop.name,
+            'BOOLEAN',
+            prop.defaultValue !== false
+          );
+          addedCount++;
+        } else if (prop.type === 'VARIANT') {
+          const defaultVal = (prop.options && prop.options[0]) || 'Padrao';
+          moduleComp.addComponentProperty(prop.name, 'TEXT', defaultVal);
+          addedCount++;
+        }
+      } catch (err) {
+        console.error(`Erro ao adicionar "${prop.name}":`, err);
+      }
+    }
+    moduleComp.name = schema.componentName || moduleComp.name;
   }
 
-  moduleComp.name = schema.componentName;
   figma.notify(
     `${addedCount} propriedades adicionadas (${linkedCount} textos linkados).`
   );
@@ -298,8 +291,32 @@ function lerTextosDaTela() {
     return;
   }
 
+  let nodesToExtract = [...selection];
+
+  // Se selecionou apenas 1 e tem sufixo, busca o irmão automaticamente (Desktop + Mobile)
+  if (selection.length === 1 && selection[0].name) {
+    const rawName = selection[0].name.trim().toLowerCase();
+    const baseName = rawName.replace(/(_desk|_desktop|_mobile|_mob)$/, '');
+
+    if (rawName !== baseName) {
+      const parent = selection[0].parent;
+      if (parent && 'children' in parent) {
+        const siblings = parent.children.filter((n) => {
+          const nName = n.name.trim().toLowerCase();
+          return nName !== rawName && nName.replace(/(_desk|_desktop|_mobile|_mob)$/, '') === baseName;
+        });
+        
+        for (const sib of siblings) {
+          if (!nodesToExtract.includes(sib)) {
+            nodesToExtract.push(sib);
+          }
+        }
+      }
+    }
+  }
+
   // Agrupa a seleção usando a mesma lógica de buildModuleTree
-  const modules = buildModuleTree({ children: selection });
+  const modules = buildModuleTree({ children: nodesToExtract });
 
   if (modules.length === 0) {
     // Modo de fallback caso não identifique módulos estruturados (ex: selecionou apenas um texto solto)
@@ -466,6 +483,27 @@ figma.ui.onmessage = async (msg) => {
   else if (msg.type === 'read-full-page') {
     // Lê a página inteira para montar o payload hierárquico
     readFullPage();
+  }
+
+  // --- Session & Auth (v3.0) ---
+  else if (msg.type === 'save-session') {
+    figma.clientStorage.setAsync('auth_user', msg.user);
+    figma.clientStorage.setAsync('auth_token', msg.token);
+  } else if (msg.type === 'get-session') {
+    Promise.all([
+      figma.clientStorage.getAsync('auth_user'),
+      figma.clientStorage.getAsync('auth_token')
+    ]).then(([user, token]) => {
+      figma.ui.postMessage({ type: 'session-restored', user, token });
+    });
+  } else if (msg.type === 'clear-session') {
+    figma.clientStorage.deleteAsync('auth_user');
+    figma.clientStorage.deleteAsync('auth_token');
+  }
+
+  // --- UI Layout (v3.0) ---
+  else if (msg.type === 'resize-ui') {
+    figma.ui.resize(msg.width, msg.height);
   }
 
   // --- API Key ---

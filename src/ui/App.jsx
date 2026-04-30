@@ -1,139 +1,74 @@
 /**
  * @file App.jsx
- * Componente raiz do plugin Figma-Drupal Sync.
+ * Componente raiz do plugin Figma-Drupal Sync v3.0.
  *
- * Orquestra a comunicação entre:
- *   - useFigmaMessages (hook) ↔ Figma sandbox (main.js)
- *   - drupalClient (API) ↔ Drupal CMS
- *
- * O App.jsx é o "ponte" entre o sandbox do Figma (que não pode
- * fazer requisições HTTP) e a API do Drupal. A UI em React
- * faz os fetch() e repassa os dados para o sandbox aplicar.
+ * Integra:
+ *   - Autenticação e Guards de rota
+ *   - Layout Redimensionável (ResizableContainer)
+ *   - Navegação (NavBar + Header)
+ *   - Toasts e loading global
  */
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import './App.css';
-import TabBar from './components/TabBar';
-import DesignerTab from './components/DesignerTab';
+
+// Layout & Shared
+import ResizableContainer from './components/layout/ResizableContainer';
+import Header from './components/layout/Header';
+import NavBar from './components/layout/NavBar';
+import ToastContainer from './components/shared/Toast';
+
+// Screens
+import LoginScreen from './components/auth/LoginScreen';
+import BoundState from './components/home/BoundState';
+import UnboundState from './components/home/UnboundState';
+import TemplateList from './components/templates/TemplateList';
+import ScanReport from './components/scan/ScanReport';
 import DevSettingsTab from './components/DevSettingsTab';
-import { useFigmaMessages, postToFigma } from './hooks/useFigmaMessages';
+
+// Hooks & Stores
+import { useAuth } from './hooks/useAuth';
+import { useFigmaMessages } from './hooks/useFigmaMessages';
+import useAppStore from './stores/appStore';
 import { createDrupalClient } from '../api/drupalClient';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('ux');
+  const { isAuthenticated, isDevRole, token } = useAuth();
+  const currentScreen = useAppStore((s) => s.currentScreen);
+  const navigate = useAppStore((s) => s.navigate);
+  const addToast = useAppStore((s) => s.addToast);
 
-  // Hook de comunicação com o Figma
   const figma = useFigmaMessages();
 
-  // Status local por aba
-  const [uxStatus, setUxStatus] = useState({ text: '', type: '', visible: false });
-  const [devStatus, setDevStatus] = useState({ text: '', type: '', visible: false });
+  // Guard: redireciona para login se não estiver autenticado
+  useEffect(() => {
+    if (!isAuthenticated && currentScreen !== 'login') {
+      navigate('login');
+    } else if (isAuthenticated && currentScreen === 'login') {
+      navigate('home');
+    }
+  }, [isAuthenticated, currentScreen, navigate]);
 
-  // ★ CHAMADA ÚNICA DE API: Cliente criado com a apiKey atual
-  const client = useMemo(
-    () => createDrupalClient(figma.apiKey),
-    [figma.apiKey]
-  );
+  // Cliente da API (agora usa a API Key explicitamente salva, com fallback para o token mock JWT)
+  const client = useMemo(() => {
+    return createDrupalClient(figma.apiKey || token);
+  }, [token, figma.apiKey]);
 
-  // ── Helpers ──────────────────────────────────────
-  function showUxStatus(text, type) {
-    setUxStatus({ text, type, visible: true });
-  }
+  // ══════════════════════════════════════════════════════
+  // HANDLERS HOME / DEPLOY
+  // ══════════════════════════════════════════════════════
 
-  function showDevStatus(text, type) {
-    setDevStatus({ text, type, visible: true });
-  }
-
-  /**
-   * Monta dados limpos (sem nulls) para envio.
-   */
-  function buildCleanData() {
+  const buildCleanData = () => {
     const clean = {};
     Object.entries(figma.extractedData).forEach(([k, v]) => {
       if (v !== null) clean[k] = v;
     });
     return clean;
-  }
+  };
 
-  /**
-   * Download de JSON como arquivo local.
-   */
-  function downloadJSON(nid, moduleName) {
-    const payload = {
-      target_nid: nid,
-      module_name: moduleName,
-      data: buildCleanData(),
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = (moduleName || 'backup') + '.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  // ══════════════════════════════════════════════════════
-  // LISTENER: Sandbox pede à UI para fazer fetch (do-sync-fetch)
-  // ══════════════════════════════════════════════════════
-  useEffect(() => {
-    function handleMessage(event) {
-      const msg = event.data?.pluginMessage;
-      if (!msg) return;
-
-      if (msg.type === 'do-sync-fetch') {
-        // ★ CHAMADA ÚNICA DE API (SYNC):
-        // Busca TODOS os dados da página em uma única requisição GET
-        const moduleName = figma.currentModuleName;
-        if (!moduleName) {
-          showUxStatus('Selecione um módulo primeiro.', 'error');
-          return;
-        }
-
-        showUxStatus('Buscando dados do Drupal...', 'info');
-
-        client
-          .syncPage(msg.nid, moduleName)
-          .then((res) => {
-            if (res.data) {
-              // Envia os dados para o sandbox aplicar nos nós do Figma
-              // ★ MULTI-MAPEAMENTO: O sandbox itera sobre arrays de nós duplicados
-              postToFigma({ type: 'apply-sync-data', data: res.data, nid: msg.nid });
-            } else {
-              showUxStatus('Nenhum dado retornado pela API.', 'error');
-            }
-          })
-          .catch((err) => {
-            showUxStatus('Erro: ' + err.message, 'error');
-          });
-      }
-    }
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [client, figma.currentModuleName]);
-
-  // ══════════════════════════════════════════════════════
-  // HANDLERS — Aba Designer
-  // ══════════════════════════════════════════════════════
-
-  const handleBind = useCallback(
-    (nid) => {
-      figma.bindNid(nid);
-    },
-    [figma.bindNid]
-  );
-
-  /**
-   * Deploy para Drupal (com NID existente).
-   * ★ CHAMADA ÚNICA DE API: Envia todos os dados em um único POST.
-   */
-  const handleDeploy = useCallback(async () => {
+  const handleDeploy = async () => {
     if (!figma.linkedNid || !figma.currentModuleName) return;
-
-    showUxStatus('Enviando para o Drupal...', 'info');
+    addToast({ type: 'info', message: 'Enviando para o Drupal...' });
 
     try {
       const res = await client.deployModule(
@@ -141,215 +76,157 @@ export default function App() {
         figma.currentModuleName,
         buildCleanData()
       );
+      addToast({ type: 'success', message: 'Deploy realizado com sucesso!' });
 
-      showUxStatus('Deploy realizado com sucesso!', 'success');
-
-      // Atualiza NID se a API retornar um novo
       const nid = res.new_nid || res.target_nid;
       if (nid && String(nid) !== String(figma.linkedNid)) {
         figma.bindNid(String(nid));
       }
     } catch (err) {
-      showUxStatus('Erro: ' + err.message, 'error');
+      addToast({ type: 'error', message: 'Erro: ' + err.message });
     }
-  }, [figma.linkedNid, figma.currentModuleName, figma.extractedData, client]);
+  };
 
-  /**
-   * Deploy de página nova (sem NID).
-   */
-  const handleDeployNewPage = useCallback(async () => {
+  const handleDeployNewPage = async () => {
     if (!figma.currentModuleName) {
-      alert('Selecione um módulo no Figma primeiro.');
+      addToast({ type: 'error', message: 'Selecione um módulo no Figma primeiro.' });
       return;
     }
-
-    showUxStatus('Criando página no Drupal...', 'info');
+    addToast({ type: 'info', message: 'Criando página no Drupal...' });
 
     try {
       const res = await client.createPage(
         figma.currentModuleName,
         buildCleanData()
       );
-
-      showUxStatus('Página criada com sucesso!', 'success');
+      addToast({ type: 'success', message: 'Página criada com sucesso!' });
 
       const nid = res.new_nid || res.target_nid;
       if (nid) figma.bindNid(String(nid));
     } catch (err) {
-      showUxStatus('Erro: ' + err.message, 'error');
+      addToast({ type: 'error', message: 'Erro: ' + err.message });
     }
-  }, [figma.currentModuleName, figma.extractedData, client]);
+  };
 
-  /**
-   * Sync do Drupal (puxa dados).
-   */
-  const handleSync = useCallback(() => {
+  const handleSync = () => {
     if (!figma.linkedNid) return;
-    showUxStatus('Buscando dados do Drupal...', 'info');
+    addToast({ type: 'info', message: 'Buscando dados do Drupal...' });
     figma.requestSync(figma.linkedNid);
-  }, [figma.linkedNid, figma.requestSync]);
+  };
 
-  /**
-   * Download JSON de backup.
-   */
-  const handleDownload = useCallback(() => {
+  const handleDownload = () => {
     if (!figma.linkedNid) return;
-    downloadJSON(figma.linkedNid, figma.currentModuleName || 'backup');
-  }, [figma.linkedNid, figma.currentModuleName, figma.extractedData]);
+    const payload = {
+      target_nid: figma.linkedNid,
+      module_name: figma.currentModuleName || 'backup',
+      data: buildCleanData(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (figma.currentModuleName || 'backup') + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // ══════════════════════════════════════════════════════
-  // HANDLERS — Aba Dev Settings
+  // RENDERIZAÇÃO DE TELAS
   // ══════════════════════════════════════════════════════
 
-  const handleForceNid = useCallback(
-    (nid) => figma.bindNid(nid),
-    [figma.bindNid]
-  );
+  const renderScreen = () => {
+    if (!isAuthenticated) {
+      return <LoginScreen />;
+    }
 
-  const handleUnlinkNid = useCallback(
-    () => figma.clearNid(),
-    [figma.clearNid]
-  );
-
-  const handleSaveApiKey = useCallback(
-    (key) => {
-      figma.saveApiKey(key);
-      showDevStatus('API Key salva com sucesso!', 'success');
-    },
-    [figma.saveApiKey]
-  );
-
-  const handleLoadSchema = useCallback(
-    (schema) => figma.loadSchema(schema),
-    [figma.loadSchema]
-  );
-
-  const handleClearSchema = useCallback(
-    () => figma.clearSchema(),
-    [figma.clearSchema]
-  );
-
-  const handleUpdateProps = useCallback(
-    () => figma.updateProps(),
-    [figma.updateProps]
-  );
-
-  /**
-   * Busca schema na API.
-   */
-  const handleFetchSchema = useCallback(
-    async (moduleName) => {
-      if (!moduleName) return;
-      showDevStatus('Buscando schema...', 'info');
-
-      try {
-        const schema = await client.fetchSchema(moduleName);
-        figma.loadSchema(schema);
-        showDevStatus('Schema carregado!', 'success');
-      } catch (err) {
-        showDevStatus('Erro: ' + err.message, 'error');
-      }
-    },
-    [client, figma.loadSchema]
-  );
-
-  /**
-   * Aplica JSON manual no Figma.
-   */
-  const handleApplyManualJson = useCallback(
-    (data) => figma.applySyncManual(data),
-    [figma.applySyncManual]
-  );
-
-  /**
-   * Deploy do painel Dev (com override de NID).
-   */
-  const handleDevDeploy = useCallback(
-    async (effectiveNid, moduleName) => {
-      if (!effectiveNid || !moduleName) {
-        alert('Preencha o NID e o Nome do Módulo!');
-        return;
-      }
-
-      showDevStatus('Enviando para o Drupal...', 'info');
-
-      try {
-        const res = await client.deployModule(
-          effectiveNid,
-          moduleName,
-          buildCleanData()
+    switch (currentScreen) {
+      case 'home':
+        return figma.linkedNid ? (
+          <BoundState
+            linkedNid={figma.linkedNid}
+            currentModuleName={figma.currentModuleName}
+            extractedData={figma.extractedData}
+            currentMeta={figma.currentMeta}
+            onDeploy={handleDeploy}
+            onSync={handleSync}
+            onDownload={handleDownload}
+          />
+        ) : (
+          <UnboundState
+            onBind={figma.bindNid}
+            onDeployNewPage={handleDeployNewPage}
+            currentModuleName={figma.currentModuleName}
+          />
         );
 
-        showDevStatus('Deploy realizado!', 'success');
+      case 'templates':
+        if (isDevRole) return <TemplateList apiKey={figma.apiKey || token} />;
+        return <div>Acesso restrito a templates.</div>;
 
-        const nid = res.new_nid || res.target_nid;
-        if (nid && !figma.linkedNid) figma.bindNid(String(nid));
-      } catch (err) {
-        showDevStatus('Erro: ' + err.message, 'error');
-      }
-    },
-    [client, figma.extractedData, figma.linkedNid]
-  );
+      case 'scan':
+        return <ScanReport />;
 
-  /**
-   * Download JSON do painel Dev.
-   */
-  const handleDevDownload = useCallback(
-    (effectiveNid, moduleName) => {
-      if (!effectiveNid || !moduleName) {
-        alert('Preencha o NID e o Nome do Módulo!');
-        return;
-      }
-      downloadJSON(effectiveNid, moduleName);
-    },
-    [figma.extractedData]
-  );
+      case 'settings':
+        if (isDevRole) {
+          return (
+            <DevSettingsTab
+              linkedNid={figma.linkedNid}
+              apiKey={figma.apiKey}
+              currentModuleName={figma.currentModuleName}
+              extractedData={figma.extractedData}
+              currentMeta={figma.currentMeta}
+              schemaStatus={figma.schemaStatus}
+              onForceNid={figma.bindNid}
+              onUnlinkNid={figma.clearNid}
+              onSaveApiKey={figma.saveApiKey}
+              onLoadSchema={figma.loadSchema}
+              onClearSchema={figma.clearSchema}
+              onUpdateProps={figma.updateProps}
+              onFetchSchema={async (name) => {
+                if(!name) return;
+                addToast({type: 'info', message: 'Buscando schema...'});
+                try {
+                  const schema = await client.fetchSchema(name);
+                  figma.loadSchema(schema);
+                  addToast({type: 'success', message: 'Schema carregado!'});
+                } catch(e) {
+                  addToast({type: 'error', message: e.message});
+                }
+              }}
+              onApplyManualJson={figma.applySyncManual}
+              onDevDeploy={async (effectiveNid, moduleName) => {
+                if(!effectiveNid || !moduleName) return;
+                addToast({type:'info', message: 'Enviando...'});
+                try {
+                  const res = await client.deployModule(effectiveNid, moduleName, buildCleanData());
+                  addToast({type:'success', message:'Deploy concluído.'});
+                  const nid = res.new_nid || res.target_nid;
+                  if (nid && !figma.linkedNid) figma.bindNid(String(nid));
+                } catch(e) {
+                  addToast({type:'error', message: e.message});
+                }
+              }}
+              onDevDownload={handleDownload} // Simplificado
+              onSyncProps={figma.syncPropsLocal}
+              status={figma.status} // Para dev settings fallback
+            />
+          );
+        }
+        return <div>Acesso restrito</div>;
 
-  // ══════════════════════════════════════════════════════
-  // RENDER
-  // ══════════════════════════════════════════════════════
+      default:
+        return <div>Tela não encontrada</div>;
+    }
+  };
 
   return (
-    <>
-      <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
-
-      {activeTab === 'ux' && (
-        <DesignerTab
-          linkedNid={figma.linkedNid}
-          currentModuleName={figma.currentModuleName}
-          extractedData={figma.extractedData}
-          currentMeta={figma.currentMeta}
-          onBind={handleBind}
-          onDeploy={handleDeploy}
-          onDeployNewPage={handleDeployNewPage}
-          onSync={handleSync}
-          onDownload={handleDownload}
-          status={uxStatus}
-        />
-      )}
-
-      {activeTab === 'dev' && (
-        <DevSettingsTab
-          linkedNid={figma.linkedNid}
-          apiKey={figma.apiKey}
-          currentModuleName={figma.currentModuleName}
-          extractedData={figma.extractedData}
-          currentMeta={figma.currentMeta}
-          schemaStatus={figma.schemaStatus}
-          onForceNid={handleForceNid}
-          onUnlinkNid={handleUnlinkNid}
-          onSaveApiKey={handleSaveApiKey}
-          onLoadSchema={handleLoadSchema}
-          onClearSchema={handleClearSchema}
-          onUpdateProps={handleUpdateProps}
-          onFetchSchema={handleFetchSchema}
-          onApplyManualJson={handleApplyManualJson}
-          onDevDeploy={handleDevDeploy}
-          onDevDownload={handleDevDownload}
-          onSyncProps={figma.syncPropsLocal}
-          status={devStatus}
-        />
-      )}
-    </>
+    <div className="app-container">
+      <Header />
+      <ResizableContainer>
+        {renderScreen()}
+      </ResizableContainer>
+      <NavBar />
+      <ToastContainer />
+    </div>
   );
 }

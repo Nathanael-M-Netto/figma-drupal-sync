@@ -15,6 +15,7 @@ import NidBadge from './NidBadge';
 import PropertyList from './PropertyList';
 import StatusBar from './StatusBar';
 import Modal from './Modal';
+import useAppStore from '../stores/appStore';
 
 export default function DevSettingsTab({
   linkedNid,
@@ -33,8 +34,10 @@ export default function DevSettingsTab({
   onApplyManualJson,
   onDevDeploy,
   onDevDownload,
+  onSyncProps,
   status,
 }) {
+  const addToast = useAppStore((s) => s.addToast);
   const [forceNidInput, setForceNidInput] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState(initialApiKey || '');
   const [schemaFetchModule, setSchemaFetchModule] = useState('');
@@ -118,7 +121,10 @@ export default function DevSettingsTab({
         </div>
         <button
           className="btn btn-outline"
-          onClick={() => onSaveApiKey(apiKeyInput.trim())}
+          onClick={() => {
+            onSaveApiKey(apiKeyInput.trim());
+            addToast({ type: 'success', message: 'Chave da API salva com sucesso!' });
+          }}
         >
           Salvar Chave
         </button>

@@ -61,7 +61,26 @@ export function buildNodeMap(rootNodes) {
 // ══════════════════════════════════════════════════════
 
 export function getBaseModuleName(name) {
-  return name.trim().toLowerCase().replace(/(_desk|_desktop|_mobile|_mob)$/, '');
+  // Remove sufixos de device e também anotações entre chaves {}
+  // Ex: "m01_hero {type: banner_destaque}" -> "m01_hero"
+  return name.trim()
+    .toLowerCase()
+    .replace(/\{.*\}/, '') // Remove conteúdo entre chaves
+    .trim()
+    .replace(/(_desk|_desktop|_mobile|_mob)$/, '');
+}
+
+/**
+ * Extrai metadados extras do nome da layer.
+ * Ex: "MOD_BANNER {type: hero_home}" -> { paragraph_type: "hero_home" }
+ */
+export function extractMetadataFromName(name) {
+  const meta = {};
+  const match = name.match(/\{type:\s*([^}]+)\}/i);
+  if (match) {
+    meta.paragraph_type = match[1].trim().toLowerCase();
+  }
+  return meta;
 }
 
 /**
@@ -89,18 +108,18 @@ export function buildModuleTree(page) {
     const rawName = frame.name.trim().toLowerCase();
     const baseName = getBaseModuleName(rawName);
 
-    // Considera apenas nós que parecem ser módulos
-    if (!baseName.startsWith('mod_') && !baseName.startsWith('comp_') && !baseName.startsWith('modulo_')) {
-      continue;
-    }
+    // Permite qualquer frame top-level como potencial módulo.
+    // A validação real acontecerá via cruzamento com o catálogo (scanValidator).
 
     const nodeMap = buildNodeMap([frame]);
     const data = extractDataFromNodeMap(nodeMap);
+    const meta = extractMetadataFromName(frame.name);
 
     if (moduleMap.has(baseName)) {
       // Combina os dados com o módulo existente (ex: junta _mobile com o _desk)
       const existing = moduleMap.get(baseName);
       existing.data = { ...existing.data, ...data };
+      existing.meta = { ...existing.meta, ...meta };
       
       // Combina os nós no nodeMap para aplicar valores corretamente no sync
       for (const [k, v] of nodeMap.entries()) {
@@ -117,6 +136,7 @@ export function buildModuleTree(page) {
         nodeId: frame.id,
         nodeMap,
         data,
+        meta,
       };
       modules.push(newModule);
       moduleMap.set(baseName, newModule);
@@ -139,11 +159,15 @@ export function extractDataFromNodeMap(nodeMap) {
   for (const [name, nodes] of nodeMap.entries()) {
     const node = nodes[0]; // Usa o primeiro nó como referência de valor
 
-    // Textos: nomes em CAIXA_ALTA com underscore
-    if (node.type === 'TEXT' && name === name.toUpperCase() && name.includes('_')) {
+    // Textos: verifica se o nome começa com TXT_, VAR_, URL_, etc (case insensitive)
+    const upperName = name.toUpperCase();
+    const isTextProp = upperName.startsWith('TXT_') || upperName.startsWith('URL_') || upperName.startsWith('VAR_') || upperName.startsWith('BOOL_');
+    
+    if (node.type === 'TEXT' && isTextProp) {
       let value = node.characters.trim();
       if (value.toLowerCase() === 'true') value = true;
       else if (value.toLowerCase() === 'false') value = false;
+      // Mantém a chave original (name) para o Figma poder sincronizar depois
       data[name] = value;
     }
 
@@ -206,10 +230,17 @@ export function extractWithSchema(nodeMap, schema) {
     if (prop.type === 'SLOT') continue;
 
     let found = false;
+    
+    // Busca no nodeMap ignorando case (ex: txt_titulo vs TXT_TITULO)
+    let matchingNodes = [];
+    for (const [key, nodes] of nodeMap.entries()) {
+      if (key.toLowerCase() === prop.name.toLowerCase()) {
+        matchingNodes.push(...nodes);
+      }
+    }
 
     if (prop.type === 'TEXT') {
-      // Busca TextNode pelo nome
-      const textNodes = (nodeMap.get(prop.name) || []).filter((n) => n.type === 'TEXT');
+      const textNodes = matchingNodes.filter((n) => n.type === 'TEXT');
       if (textNodes.length > 0) {
         let c = textNodes[0].characters.trim();
         if (c.toLowerCase() === 'true') c = true;
@@ -218,14 +249,14 @@ export function extractWithSchema(nodeMap, schema) {
         found = true;
       } else {
         // Fallback: busca em component properties
-        const p = allProps.find((p) => p.cleanName === prop.name && p.type === 'TEXT');
+        const p = allProps.find((p) => p.cleanName.toLowerCase() === prop.name.toLowerCase() && p.type === 'TEXT');
         if (p) {
           data[prop.name] = p.value;
           found = true;
         }
       }
     } else if (prop.type === 'BOOLEAN') {
-      const p = allProps.find((p) => p.cleanName === prop.name && p.type === 'BOOLEAN');
+      const p = allProps.find((p) => p.cleanName.toLowerCase() === prop.name.toLowerCase() && p.type === 'BOOLEAN');
       if (p) {
         data[prop.name] = p.value;
         found = true;
@@ -233,7 +264,7 @@ export function extractWithSchema(nodeMap, schema) {
     } else if (prop.type === 'VARIANT') {
       // Cores
       if (prop.name.startsWith('VAR_CORES')) {
-        const colorNodes = nodeMap.get(prop.name);
+        const colorNodes = matchingNodes;
         if (colorNodes && colorNodes.length > 0) {
           data[prop.name] = extractMappedColor(colorNodes[0]);
           found = true;

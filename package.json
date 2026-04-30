@@ -1,7 +1,7 @@
 {
   "name": "figma-drupal-sync",
   "private": true,
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Plugin Figma para sincronização bidirecional com Drupal CMS",
   "type": "module",
   "scripts": {
@@ -12,8 +12,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "framer-motion": "^12.38.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.123.0",

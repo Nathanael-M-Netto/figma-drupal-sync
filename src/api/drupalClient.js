@@ -34,8 +34,14 @@ export function createDrupalClient(apiKey) {
 
     const headers = {
       'Content-Type': 'application/json',
-      'X-TIM-Key': apiKey,
     };
+
+    // Suporte híbrido v2 (API Key) e v3 (JWT)
+    if (apiKey.startsWith('mock_jwt_') || apiKey.split('.').length === 3) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    } else {
+      headers['X-TIM-Key'] = apiKey;
+    }
 
     const options = { method, headers };
     if (body) {

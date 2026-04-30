@@ -1,5 +1,5 @@
 {
-    "name": "TIM Cohesion Export",
+    "name": "Figma Drupal Sync",
     "id": "1617978249353556260",
     "api": "1.0.0",
     "main": "dist/code.js",
@@ -18,6 +18,6 @@
             "http://localhost:8000",
             "https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io"
         ],
-        "reasoning": "O plugin requer acesso a rede para realizar o deploy e sync de dados diretamente com a API do CMS Headless da TIM."
+        "reasoning": "O plugin requer acesso a rede para realizar o deploy e sync de dados diretamente com a API do CMS Headless."
     }
 }
