@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import useAuthStore from '../stores/authStore';
 
 /**
  * Envia uma mensagem para o sandbox do Figma.
@@ -26,13 +27,19 @@ export function postToFigma(msg) {
 export function useFigmaMessages() {
   // --- Estado ---
   const [linkedNid, setLinkedNid] = useState(null);
-  const [apiKey, setApiKey] = useState('');
+  const apiKey = useAuthStore((s) => s.apiKey);
+  const setStoreApiKey = useAuthStore((s) => s.setApiKey);
   const [extractedData, setExtractedData] = useState({});
   const [currentMeta, setCurrentMeta] = useState(null);
   const [currentModuleName, setCurrentModuleName] = useState('');
   const [schemaStatus, setSchemaStatus] = useState({ loaded: false, name: '', propCount: 0 });
   const [status, setStatus] = useState({ text: '', type: '', visible: false });
   const [pageModules, setPageModules] = useState([]);
+
+  // ★ Auto-Sync State (Fase 7)
+  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'checking' | 'synced' | 'outdated' | 'error'
+  const [syncDiff, setSyncDiff] = useState(null); // { changed: [], added: [], removed: [], totalChanges: 0 }
+  const [autoSyncNid, setAutoSyncNid] = useState(null);
 
   // Ref para callbacks que dependem de estado atualizado
   const callbacksRef = useRef({});
@@ -67,7 +74,7 @@ export function useFigmaMessages() {
 
         // --- API Key ---
         else if (msg.type === 'init-api-key') {
-          setApiKey(msg.key);
+          setStoreApiKey(msg.key);
         }
 
         // --- Schema ---
@@ -117,6 +124,13 @@ export function useFigmaMessages() {
         // --- Page modules ---
         else if (msg.type === 'page-modules') {
           setPageModules(msg.modules || []);
+        }
+
+        // --- Auto-Sync Check (Fase 7) ---
+        else if (msg.type === 'auto-sync-check') {
+          setAutoSyncNid(msg.nid);
+          setSyncStatus('checking');
+          // A UI (App.jsx) vai interceptar isso e fazer o fetch real
         }
 
         // --- do-sync-fetch (sandbox pede à UI para fazer o fetch) ---
@@ -176,9 +190,9 @@ export function useFigmaMessages() {
   }, []);
 
   const saveApiKey = useCallback((key) => {
-    setApiKey(key);
+    setStoreApiKey(key);
     postToFigma({ type: 'save-api-key', key });
-  }, []);
+  }, [setStoreApiKey]);
 
   const readFullPage = useCallback(() => {
     postToFigma({ type: 'read-full-page' });
@@ -203,6 +217,16 @@ export function useFigmaMessages() {
     return clean;
   }, [extractedData]);
 
+  /**
+   * Atualiza o status do auto-sync após verificar com a API.
+   * @param {'synced'|'outdated'|'error'} newStatus
+   * @param {Object|null} diff - Diff de campos
+   */
+  const setSyncResult = useCallback((newStatus, diff = null) => {
+    setSyncStatus(newStatus);
+    setSyncDiff(diff);
+  }, []);
+
   return {
     // Estado
     linkedNid,
@@ -213,6 +237,9 @@ export function useFigmaMessages() {
     schemaStatus,
     status,
     pageModules,
+    syncStatus,
+    syncDiff,
+    autoSyncNid,
 
     // Ações
     bindNid,
@@ -231,5 +258,6 @@ export function useFigmaMessages() {
     buildCleanData,
     setCurrentModuleName,
     onceMessage,
+    setSyncResult,
   };
 }

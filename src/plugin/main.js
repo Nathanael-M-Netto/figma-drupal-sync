@@ -20,6 +20,9 @@ import {
   extractDataFromNodeMap,
   extractWithSchema,
   applyTextToNode,
+  identifySharedProps,
+  matchModuleToTemplate,
+  buildFullPageScanReport,
 } from '../utils/nodeMapper.js';
 import { extractMappedColor } from '../utils/colorMap.js';
 
@@ -67,14 +70,15 @@ function convertFrameToComponent(frame) {
   comp.x = frame.x;
   comp.y = frame.y;
   comp.resize(frame.width, frame.height);
-  comp.fills = JSON.parse(JSON.stringify(frame.fills));
-  comp.strokes = JSON.parse(JSON.stringify(frame.strokes));
-  comp.effects = JSON.parse(JSON.stringify(frame.effects));
-  comp.cornerRadius = frame.cornerRadius;
-  comp.clipsContent = frame.clipsContent;
-  comp.layoutMode = frame.layoutMode;
-
-  if (frame.layoutMode !== 'NONE') {
+  
+  if ('fills' in frame) comp.fills = JSON.parse(JSON.stringify(frame.fills));
+  if ('strokes' in frame) comp.strokes = JSON.parse(JSON.stringify(frame.strokes));
+  if ('effects' in frame) comp.effects = JSON.parse(JSON.stringify(frame.effects));
+  if ('cornerRadius' in frame) comp.cornerRadius = frame.cornerRadius;
+  if ('clipsContent' in frame) comp.clipsContent = frame.clipsContent;
+  
+  if ('layoutMode' in frame && frame.layoutMode !== 'NONE') {
+    comp.layoutMode = frame.layoutMode;
     comp.primaryAxisSizingMode = frame.primaryAxisSizingMode;
     comp.counterAxisSizingMode = frame.counterAxisSizingMode;
     comp.primaryAxisAlignItems = frame.primaryAxisAlignItems;
@@ -209,7 +213,7 @@ async function atualizarPropriedades(schema) {
       const main = rootNode.mainComponent;
       if (!main) continue;
       moduleComp = main.parent && main.parent.type === 'COMPONENT_SET' ? main.parent : main;
-    } else if (rootNode.type === 'FRAME') {
+    } else if (rootNode.type === 'FRAME' || rootNode.type === 'GROUP') {
       moduleComp = convertFrameToComponent(rootNode);
     } else {
       continue;
@@ -485,6 +489,161 @@ figma.ui.onmessage = async (msg) => {
     readFullPage();
   }
 
+  // --- Scan & Property Loading (Fase 6) ---
+  else if (msg.type === 'scan-and-load-props') {
+    // Escaneia TODA a página, faz match com catálogo, e carrega propriedades
+    const page = figma.currentPage;
+    const templates = msg.templates || [];
+    const report = buildFullPageScanReport(page, templates);
+
+    // Para cada módulo com match, tenta carregar propriedades
+    let totalPropsCreated = 0;
+    let totalLinksCreated = 0;
+
+    for (const mod of report) {
+      if (mod.matchResult.matchType === 'none') continue;
+
+      // Busca o nó raiz
+      let rootNode = null;
+      for (const child of page.children) {
+        if (child.id === mod.nodeId) {
+          rootNode = child;
+          break;
+        }
+      }
+      if (!rootNode) continue;
+
+      // Identifica props shared vs exclusive
+      const analysis = identifySharedProps(rootNode);
+
+      // Converte o frame para componente se ainda não for
+      let component = rootNode;
+      if (rootNode.type === 'FRAME' || rootNode.type === 'GROUP') {
+        try {
+          component = figma.createComponentFromNode(rootNode);
+        } catch (e) {
+          console.warn(`[scan-and-load] Não pôde converter ${rootNode.name} para Component:`, e);
+          continue;
+        }
+      }
+
+      // Carrega propriedades compartilhadas (Desktop + Mobile linkados)
+      for (const shared of analysis.shared) {
+        try {
+          const allNodes = [...shared.deskNodes, ...shared.mobileNodes];
+          if (shared.type === 'TEXT') {
+            // Cria uma única text property e linka todos os nós
+            const propName = shared.name;
+            const existingProps = component.componentPropertyDefinitions || {};
+            if (!existingProps[propName]) {
+              const firstTextNode = allNodes.find(n => n.type === 'TEXT');
+              component.addComponentProperty(propName, 'TEXT', firstTextNode?.characters || '');
+              totalPropsCreated++;
+            }
+            // Linka ambos desk e mobile ao mesmo property
+            for (const node of allNodes) {
+              if (node.type === 'TEXT') {
+                try {
+                  node.componentPropertyReferences = { characters: propName };
+                  totalLinksCreated++;
+                } catch (e) {
+                  // Silently skip nodes that can't be linked
+                }
+              }
+            }
+          } else if (shared.type === 'BOOLEAN') {
+            const propName = shared.name;
+            const existingProps = component.componentPropertyDefinitions || {};
+            if (!existingProps[propName]) {
+              component.addComponentProperty(propName, 'BOOLEAN', true);
+              totalPropsCreated++;
+            }
+            for (const node of allNodes) {
+              try {
+                node.componentPropertyReferences = { visible: propName };
+                totalLinksCreated++;
+              } catch (e) {}
+            }
+          }
+        } catch (err) {
+          console.warn(`[scan-and-load] Erro ao criar prop shared ${shared.name}:`, err);
+        }
+      }
+
+      // Carrega propriedades exclusivas (desk ou mobile only)
+      const exclusiveProps = [...analysis.deskOnly, ...analysis.mobileOnly, ...analysis.allProps];
+      for (const prop of exclusiveProps) {
+        try {
+          const propName = prop.name;
+          const existingProps = component.componentPropertyDefinitions || {};
+          if (!existingProps[propName]) {
+            if (prop.type === 'TEXT') {
+              const firstTextNode = prop.nodes.find(n => n.type === 'TEXT');
+              component.addComponentProperty(propName, 'TEXT', firstTextNode?.characters || '');
+              totalPropsCreated++;
+            } else if (prop.type === 'BOOLEAN') {
+              component.addComponentProperty(propName, 'BOOLEAN', true);
+              totalPropsCreated++;
+            }
+          }
+          for (const node of prop.nodes) {
+            try {
+              if (node.type === 'TEXT' && prop.type === 'TEXT') {
+                node.componentPropertyReferences = { characters: propName };
+                totalLinksCreated++;
+              } else if (prop.type === 'BOOLEAN') {
+                node.componentPropertyReferences = { visible: propName };
+                totalLinksCreated++;
+              }
+            } catch (e) {}
+          }
+        } catch (err) {
+          console.warn(`[scan-and-load] Erro ao criar prop exclusive ${prop.name}:`, err);
+        }
+      }
+    }
+
+    figma.ui.postMessage({
+      type: 'scan-load-done',
+      report: report.map(r => ({
+        name: r.name,
+        nodeId: r.nodeId,
+        matchType: r.matchResult.matchType,
+        matchScore: r.matchResult.score,
+        templateName: r.matchResult.template?.componentName || null,
+        propsAnalysis: r.propsAnalysis,
+        expectedProps: r.expectedProps,
+        foundProps: r.foundProps,
+      })),
+      totalPropsCreated,
+      totalLinksCreated,
+    });
+
+    figma.notify(`Scan concluído: ${totalPropsCreated} props criadas, ${totalLinksCreated} links feitos.`);
+  }
+
+  // Relatório de scan sem carregar props (apenas leitura)
+  else if (msg.type === 'full-page-scan-report') {
+    const page = figma.currentPage;
+    const templates = msg.templates || [];
+    const report = buildFullPageScanReport(page, templates);
+
+    figma.ui.postMessage({
+      type: 'scan-report-result',
+      report: report.map(r => ({
+        name: r.name,
+        nodeId: r.nodeId,
+        order: r.order,
+        matchType: r.matchResult.matchType,
+        matchScore: r.matchResult.score,
+        templateName: r.matchResult.template?.componentName || null,
+        propsAnalysis: r.propsAnalysis,
+        expectedProps: r.expectedProps,
+        foundProps: r.foundProps,
+      })),
+    });
+  }
+
   // --- Session & Auth (v3.0) ---
   else if (msg.type === 'save-session') {
     figma.clientStorage.setAsync('auth_user', msg.user);
@@ -492,9 +651,10 @@ figma.ui.onmessage = async (msg) => {
   } else if (msg.type === 'get-session') {
     Promise.all([
       figma.clientStorage.getAsync('auth_user'),
-      figma.clientStorage.getAsync('auth_token')
-    ]).then(([user, token]) => {
-      figma.ui.postMessage({ type: 'session-restored', user, token });
+      figma.clientStorage.getAsync('auth_token'),
+      figma.clientStorage.getAsync('api_key')
+    ]).then(([user, token, key]) => {
+      figma.ui.postMessage({ type: 'session-restored', user, token, key });
     });
   } else if (msg.type === 'clear-session') {
     figma.clientStorage.deleteAsync('auth_user');
@@ -526,3 +686,9 @@ figma.clientStorage.getAsync('api_key').then((key) => {
 
 // Envia estado inicial do NID
 sendNidState();
+
+// Envia auto-sync-check se NID existir (Fase 7)
+const initNid = getLinkedNid();
+if (initNid) {
+  figma.ui.postMessage({ type: 'auto-sync-check', nid: initNid });
+}

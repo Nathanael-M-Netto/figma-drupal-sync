@@ -21,6 +21,8 @@ export const SCREEN_SIZES = {
   templates: { width: 460, height: 680 },
   scan:      { width: 460, height: 700 },
   settings:  { width: 460, height: 720 },
+  deploy:    { width: 460, height: 750 },
+  inspect:   { width: 460, height: 680 },
 };
 
 let toastIdCounter = 0;

@@ -16,3 +16,4 @@ npm-debug.log*
 .idea/
 .planning/state.json
 .planning/graphs/
+.env

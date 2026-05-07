@@ -10,13 +10,13 @@
  */
 
 import React, { useEffect, useMemo } from 'react';
-import './App.css';
 
 // Layout & Shared
 import ResizableContainer from './components/layout/ResizableContainer';
 import Header from './components/layout/Header';
 import NavBar from './components/layout/NavBar';
 import ToastContainer from './components/shared/Toast';
+import ErrorBoundary from './components/shared/ErrorBoundary';
 
 // Screens
 import LoginScreen from './components/auth/LoginScreen';
@@ -24,21 +24,30 @@ import BoundState from './components/home/BoundState';
 import UnboundState from './components/home/UnboundState';
 import TemplateList from './components/templates/TemplateList';
 import ScanReport from './components/scan/ScanReport';
-import DevSettingsTab from './components/DevSettingsTab';
+import DevSettingsTab from './components/dev/DevSettingsTab';
+import DeployScreen from './components/deploy/DeployScreen';
+import InspectScreen from './components/inspect/InspectScreen';
 
 // Hooks & Stores
 import { useAuth } from './hooks/useAuth';
 import { useFigmaMessages } from './hooks/useFigmaMessages';
+import { useTemplates } from './hooks/useTemplates';
 import useAppStore from './stores/appStore';
 import { createDrupalClient } from '../api/drupalClient';
 
 export default function App() {
-  const { isAuthenticated, isDevRole, token } = useAuth();
+  const { isAuthenticated, isDevRole, token, checkSession } = useAuth();
   const currentScreen = useAppStore((s) => s.currentScreen);
   const navigate = useAppStore((s) => s.navigate);
   const addToast = useAppStore((s) => s.addToast);
 
   const figma = useFigmaMessages();
+  const templateData = useTemplates(figma.apiKey || token);
+
+  // Inicializa sessão
+  useEffect(() => {
+    checkSession();
+  }, [checkSession]);
 
   // Guard: redireciona para login se não estiver autenticado
   useEffect(() => {
@@ -53,6 +62,46 @@ export default function App() {
   const client = useMemo(() => {
     return createDrupalClient(figma.apiKey || token);
   }, [token, figma.apiKey]);
+
+  // ★ Auto-Sync: quando o plugin abre e detecta NID, busca dados do Drupal (Fase 7)
+  useEffect(() => {
+    if (figma.syncStatus !== 'checking' || !figma.autoSyncNid) return;
+
+    (async () => {
+      try {
+        const drupalData = await client.syncPage(figma.autoSyncNid);
+
+        if (!drupalData || Object.keys(drupalData).length === 0) {
+          figma.setSyncResult('synced', null);
+          return;
+        }
+
+        // Compara dados do Drupal com dados extraídos do Figma
+        const figmaData = figma.extractedData || {};
+        const changed = [];
+        const added = [];
+
+        for (const [key, drupalValue] of Object.entries(drupalData)) {
+          if (!(key in figmaData)) {
+            added.push({ field: key, drupalValue });
+          } else if (String(figmaData[key]) !== String(drupalValue)) {
+            changed.push({ field: key, figmaValue: figmaData[key], drupalValue });
+          }
+        }
+
+        const totalChanges = changed.length + added.length;
+
+        if (totalChanges === 0) {
+          figma.setSyncResult('synced', { changed: [], added: [], removed: [], totalChanges: 0 });
+        } else {
+          figma.setSyncResult('outdated', { changed, added, removed: [], totalChanges });
+        }
+      } catch (err) {
+        console.error('[Auto-Sync] Erro:', err);
+        figma.setSyncResult('error', null);
+      }
+    })();
+  }, [figma.syncStatus, figma.autoSyncNid, client]);
 
   // ══════════════════════════════════════════════════════
   // HANDLERS HOME / DEPLOY
@@ -150,6 +199,18 @@ export default function App() {
             onDeploy={handleDeploy}
             onSync={handleSync}
             onDownload={handleDownload}
+            syncStatus={figma.syncStatus}
+            syncDiff={figma.syncDiff}
+            onApplySync={() => {
+              if (figma.syncDiff) {
+                const data = {};
+                for (const c of figma.syncDiff.changed) data[c.field] = c.drupalValue;
+                for (const a of figma.syncDiff.added) data[a.field] = a.drupalValue;
+                figma.applySyncManual(data);
+                figma.setSyncResult('synced', null);
+                addToast({ type: 'success', message: 'Dados do Drupal aplicados no Figma!' });
+              }
+            }}
           />
         ) : (
           <UnboundState
@@ -165,6 +226,26 @@ export default function App() {
 
       case 'scan':
         return <ScanReport />;
+
+      case 'deploy':
+        return (
+          <DeployScreen
+            linkedNid={figma.linkedNid}
+            currentModuleName={figma.currentModuleName}
+            extractedData={figma.extractedData}
+            client={client}
+            onDeployDone={(newNid) => {
+              if (newNid && !figma.linkedNid) figma.bindNid(String(newNid));
+            }}
+          />
+        );
+
+      case 'inspect':
+        return (
+          <InspectScreen
+            templates={templateData.filteredTemplates}
+          />
+        );
 
       case 'settings':
         if (isDevRole) {
@@ -220,10 +301,12 @@ export default function App() {
   };
 
   return (
-    <div className="app-container">
+    <div className="flex flex-col h-full">
       <Header />
       <ResizableContainer>
-        {renderScreen()}
+        <ErrorBoundary>
+          {renderScreen()}
+        </ErrorBoundary>
       </ResizableContainer>
       <NavBar />
       <ToastContainer />

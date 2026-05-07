@@ -95,7 +95,7 @@ export function extractMetadataFromName(name) {
  */
 export function buildModuleTree(page) {
   const topFrames = page.children.filter(
-    (n) => n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'INSTANCE'
+    (n) => n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'INSTANCE' || n.type === 'GROUP'
   );
 
   // Ordena por posição Y (de cima para baixo na tela)
@@ -326,3 +326,272 @@ export async function applyTextToNode(node, value) {
     return false;
   }
 }
+
+// ══════════════════════════════════════════════════════
+// ★ PROPERTY LOADING & LINKING ENGINE (Fase 6)
+// ══════════════════════════════════════════════════════
+
+/**
+ * Faz match do nome de um módulo no Figma contra o catálogo de templates da API.
+ *
+ * Suporta:
+ *   - Match exato: "m01_hero_destaque_full_image_v01" → template correspondente
+ *   - Match parcial: "m01_hero_destaque_full_image" → melhor variante
+ *   - Match fuzzy por substrings compartilhadas
+ *
+ * @param {string} moduleName - Nome do frame/grupo no Figma (já normalizado)
+ * @param {Array} templates - Array de templates da API no formato [{componentName, properties}]
+ * @returns {{template: Object|null, score: number, matchType: string}}
+ */
+export function matchModuleToTemplate(moduleName, templates) {
+  if (!moduleName || !templates || templates.length === 0) {
+    return { template: null, score: 0, matchType: 'none' };
+  }
+
+  const normalized = moduleName.toLowerCase().trim()
+    .replace(/(_desk|_desktop|_mobile|_mob)$/, '')
+    .replace(/\{.*\}/, '').trim();
+
+  let bestMatch = null;
+  let bestScore = 0;
+  let matchType = 'none';
+
+  for (const tmpl of templates) {
+    const tmplName = (tmpl.componentName || tmpl.module_name || '').toLowerCase().trim();
+
+    // Match exato
+    if (tmplName === normalized) {
+      return { template: tmpl, score: 1.0, matchType: 'exact' };
+    }
+
+    // Match: um contém o outro
+    if (normalized.includes(tmplName) || tmplName.includes(normalized)) {
+      const score = Math.min(normalized.length, tmplName.length) / Math.max(normalized.length, tmplName.length);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = tmpl;
+        matchType = 'contains';
+      }
+    }
+
+    // Match fuzzy por segmentos _
+    const partsA = normalized.split('_');
+    const partsB = tmplName.split('_');
+    let matches = 0;
+    for (const part of partsA) {
+      if (part.length > 1 && partsB.includes(part)) matches++;
+    }
+    const fuzzyScore = matches / Math.max(partsA.length, partsB.length);
+    if (fuzzyScore > bestScore && fuzzyScore > 0.4) {
+      bestScore = fuzzyScore;
+      bestMatch = tmpl;
+      matchType = 'fuzzy';
+    }
+  }
+
+  return { template: bestMatch, score: bestScore, matchType };
+}
+
+/**
+ * Identifica propriedades compartilhadas e exclusivas entre subcamadas Desktop e Mobile.
+ *
+ * Dentro de um grupo/módulo, pode haver:
+ *   - Um frame/grupo "_desk" ou "_desktop"
+ *   - Um frame/grupo "_mobile" ou "_mob"
+ *
+ * Props com o MESMO NOME em ambos devem ser linkadas a uma ÚNICA component property.
+ * Props únicas permanecem individuais.
+ *
+ * @param {SceneNode} rootNode - Nó raiz do módulo
+ * @returns {{
+ *   deskNode: SceneNode|null,
+ *   mobileNode: SceneNode|null,
+ *   shared: Array<{name: string, deskNodes: SceneNode[], mobileNodes: SceneNode[]}>,
+ *   deskOnly: Array<{name: string, nodes: SceneNode[]}>,
+ *   mobileOnly: Array<{name: string, nodes: SceneNode[]}>,
+ *   allProps: Array<{name: string, type: string, nodes: SceneNode[]}>
+ * }}
+ */
+export function identifySharedProps(rootNode) {
+  const result = {
+    deskNode: null,
+    mobileNode: null,
+    shared: [],
+    deskOnly: [],
+    mobileOnly: [],
+    allProps: [],
+  };
+
+  if (!rootNode || !('children' in rootNode)) return result;
+
+  // Identifica subcamadas Desktop e Mobile
+  for (const child of rootNode.children) {
+    const childName = child.name.trim().toLowerCase();
+    if (childName.match(/(_desk|_desktop)$/)) {
+      result.deskNode = child;
+    } else if (childName.match(/(_mobile|_mob)$/)) {
+      result.mobileNode = child;
+    }
+  }
+
+  // Se não encontrou separação desk/mobile, retorna tudo como "all"
+  if (!result.deskNode && !result.mobileNode) {
+    const allMap = buildPrefixedNodeMap([rootNode]);
+    for (const [name, nodes] of allMap.entries()) {
+      result.allProps.push({ name, type: inferPropType(name), nodes });
+    }
+    return result;
+  }
+
+  // Constrói mapas separados
+  const deskMap = result.deskNode ? buildPrefixedNodeMap([result.deskNode]) : new Map();
+  const mobileMap = result.mobileNode ? buildPrefixedNodeMap([result.mobileNode]) : new Map();
+
+  const allNames = new Set([...deskMap.keys(), ...mobileMap.keys()]);
+
+  for (const name of allNames) {
+    const inDesk = deskMap.has(name);
+    const inMobile = mobileMap.has(name);
+
+    if (inDesk && inMobile) {
+      result.shared.push({
+        name,
+        type: inferPropType(name),
+        deskNodes: deskMap.get(name),
+        mobileNodes: mobileMap.get(name),
+      });
+    } else if (inDesk) {
+      result.deskOnly.push({
+        name,
+        type: inferPropType(name),
+        nodes: deskMap.get(name),
+      });
+    } else {
+      result.mobileOnly.push({
+        name,
+        type: inferPropType(name),
+        nodes: mobileMap.get(name),
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Constrói um mapa de nós apenas com os que possuem prefixos reconhecidos.
+ * Filtra apenas TEXT, INSTANCE, e nós com nome prefixado.
+ *
+ * @param {SceneNode[]} rootNodes
+ * @returns {Map<string, SceneNode[]>}
+ */
+function buildPrefixedNodeMap(rootNodes) {
+  const map = new Map();
+
+  function walk(nodes) {
+    for (const node of nodes) {
+      const name = node.name.trim();
+      const upper = name.toUpperCase();
+
+      // Só inclui nós com prefixos reconhecidos
+      const hasPrefixedName =
+        upper.startsWith('TXT_') ||
+        upper.startsWith('URL_') ||
+        upper.startsWith('VAR_') ||
+        upper.startsWith('BOOL_') ||
+        upper.startsWith('MOD_') ||
+        upper.startsWith('COMP_');
+
+      if (hasPrefixedName && (node.type === 'TEXT' || node.type === 'INSTANCE')) {
+        if (!map.has(name)) map.set(name, []);
+        map.get(name).push(node);
+      }
+
+      if ('children' in node) walk(node.children);
+    }
+  }
+
+  walk(rootNodes);
+  return map;
+}
+
+/**
+ * Infere o tipo de property (TEXT/BOOLEAN/VARIANT) pelo prefixo do nome.
+ *
+ * @param {string} name
+ * @returns {string} 'TEXT' | 'BOOLEAN' | 'VARIANT'
+ */
+function inferPropType(name) {
+  const upper = name.toUpperCase();
+  if (upper.startsWith('BOOL_')) return 'BOOLEAN';
+  if (upper.startsWith('VAR_')) return 'VARIANT';
+  return 'TEXT';
+}
+
+/**
+ * Gera relatório completo de scan da página comparando com catálogo de templates.
+ *
+ * @param {PageNode} page - Página do Figma
+ * @param {Array} templates - Templates da API [{componentName, properties}]
+ * @returns {Array<{
+ *   name: string, nodeId: string, y: number,
+ *   matchResult: {template, score, matchType},
+ *   propsAnalysis: ReturnType<identifySharedProps>,
+ *   expectedProps: number, foundProps: number
+ * }>}
+ */
+export function buildFullPageScanReport(page, templates) {
+  const modules = buildModuleTree(page);
+  const report = [];
+
+  for (const mod of modules) {
+    // Match contra catálogo
+    const matchResult = matchModuleToTemplate(mod.name, templates);
+
+    // Análise de props Desktop/Mobile
+    // Para obter o rootNode, buscamos nos filhos da página
+    let rootNode = null;
+    for (const child of page.children) {
+      if (child.id === mod.nodeId) {
+        rootNode = child;
+        break;
+      }
+    }
+
+    const propsAnalysis = rootNode ? identifySharedProps(rootNode) : {
+      deskNode: null, mobileNode: null,
+      shared: [], deskOnly: [], mobileOnly: [], allProps: [],
+    };
+
+    // Conta props esperadas vs encontradas
+    const expectedProps = matchResult.template?.properties?.length || 0;
+    const foundProps = propsAnalysis.shared.length
+      + propsAnalysis.deskOnly.length
+      + propsAnalysis.mobileOnly.length
+      + propsAnalysis.allProps.length;
+
+    report.push({
+      name: mod.name,
+      nodeId: mod.nodeId,
+      y: mod.y,
+      order: mod.order,
+      data: mod.data,
+      matchResult,
+      propsAnalysis: {
+        sharedCount: propsAnalysis.shared.length,
+        deskOnlyCount: propsAnalysis.deskOnly.length,
+        mobileOnlyCount: propsAnalysis.mobileOnly.length,
+        allPropsCount: propsAnalysis.allProps.length,
+        hasDesktopMobile: !!(propsAnalysis.deskNode || propsAnalysis.mobileNode),
+        sharedNames: propsAnalysis.shared.map(s => s.name),
+        deskOnlyNames: propsAnalysis.deskOnly.map(d => d.name),
+        mobileOnlyNames: propsAnalysis.mobileOnly.map(m => m.name),
+      },
+      expectedProps,
+      foundProps,
+    });
+  }
+
+  return report;
+}
+

@@ -29,8 +29,8 @@ export function useAuth() {
   const addToast = useAppStore((s) => s.addToast);
 
   /**
-   * Verifica sessão salva ao montar.
    * Escuta mensagem do sandbox com dados do clientStorage.
+   * Não solicita automaticamente aqui para evitar loops em subcomponentes.
    */
   useEffect(() => {
     function handleMessage(event) {
@@ -39,18 +39,26 @@ export function useAuth() {
 
       if (msg.type === 'session-restored') {
         if (msg.user && msg.token && isTokenValid(msg.token)) {
-          restoreSession(msg.user, msg.token);
-          navigate('home');
+          restoreSession(msg.user, msg.token, msg.key);
+          
+          // Só redireciona se estiver na tela de login
+          const current = useAppStore.getState().currentScreen;
+          if (current === 'login') {
+            navigate('home');
+          }
         }
       }
     }
 
     window.addEventListener('message', handleMessage);
-
-    // Solicita sessão salva ao sandbox
-    postToFigma({ type: 'get-session' });
-
     return () => window.removeEventListener('message', handleMessage);
+  }, [restoreSession, navigate]);
+
+  /**
+   * Solicita sessão salva ao sandbox (chamada manual pelo App).
+   */
+  const checkSession = useCallback(() => {
+    postToFigma({ type: 'get-session' });
   }, []);
 
   /**
@@ -107,5 +115,6 @@ export function useAuth() {
     isDevRole: user?.role === 'dev',
     login,
     logout,
+    checkSession,
   };
 }

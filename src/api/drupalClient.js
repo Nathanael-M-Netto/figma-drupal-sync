@@ -11,7 +11,7 @@
  * NÃO pode fazer requisições HTTP.
  */
 
-const API_BASE_URL = 'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io';
 
 // ══════════════════════════════════════════════════════
 // CLIENTE HTTP
@@ -85,10 +85,13 @@ export function createDrupalClient(apiKey) {
    * @param {Array<{name: string, order: number, data: Object}>} modules - Árvore de módulos
    * @returns {Promise<Object>} Resposta da API
    */
-  async function deployPage(targetNid, modules) {
-    // Payload hierárquico: toda a página em um único JSON
+  async function deployPage(targetNid, modules, nodeFieldValues = null) {
+    // Phase 4 Target Flow: /variants/preview
     const payload = {
       target_nid: targetNid,
+      template_name: modules[0]?.name, // Assume o primeiro como principal para o template_name do preview
+      node_field_values: nodeFieldValues,
+      // Para manter compatibilidade com o middleware enquanto ele evolui
       modules: modules.map((mod) => ({
         module_name: mod.name,
         order: mod.order,
@@ -96,7 +99,7 @@ export function createDrupalClient(apiKey) {
       })),
     };
 
-    return request('/figma/page', 'POST', payload);
+    return request(`/api/nodes/${targetNid}/canvas`, 'PUT', payload);
   }
 
   /**
@@ -110,12 +113,11 @@ export function createDrupalClient(apiKey) {
    */
   async function deployModule(targetNid, moduleName, data) {
     const payload = {
-      target_nid: targetNid,
-      module_name: moduleName,
+      template_name: moduleName,
       data,
     };
 
-    return request('/figma/page', 'POST', payload);
+    return request(`/api/nodes/${targetNid}/canvas`, 'PUT', payload);
   }
 
   // ══════════════════════════════════════════════════════
@@ -134,7 +136,7 @@ export function createDrupalClient(apiKey) {
    * @returns {Promise<Object>} JSON com dados da página
    */
   async function syncPage(nid, moduleName) {
-    let endpoint = `/figma/pull/${nid}`;
+    let endpoint = `/api/nodes/${nid}/sync-payload`;
     if (moduleName) {
       endpoint += `?module_name=${encodeURIComponent(moduleName)}`;
     }
@@ -156,11 +158,12 @@ export function createDrupalClient(apiKey) {
    */
   async function createPage(moduleName, data) {
     const payload = {
+      target_nid: null,
       module_name: moduleName,
       data,
     };
 
-    return request('/figma/page', 'POST', payload);
+    return request('/api/pages', 'POST', payload);
   }
 
   // ══════════════════════════════════════════════════════
@@ -174,10 +177,28 @@ export function createDrupalClient(apiKey) {
    * @returns {Promise<Object>} Schema do módulo
    */
   async function fetchSchema(moduleName) {
-    const endpoint = `/figma/templates?module_name=${encodeURIComponent(moduleName)}`;
+    const endpoint = `/api/templates/${encodeURIComponent(moduleName)}`;
     const res = await request(endpoint, 'GET');
-    // A API pode retornar o schema em diferentes formatos
-    return res.figma_component_schema || res.schema || res;
+    // Retorna o objeto template completo ou o figma_component_schema se disponível
+    return res.template?.figma_component_schema || res.template || res;
+  }
+
+  // ══════════════════════════════════════════════════════
+  // NODE METADATA (Fase 4)
+  // ══════════════════════════════════════════════════════
+
+  /**
+   * Descobre o content type de um NID.
+   */
+  async function getNodeContentType(nid) {
+    return request(`/api/nodes/${nid}`, 'GET');
+  }
+
+  /**
+   * Busca o schema de campos de um content type Drupal.
+   */
+  async function getContentTypeSchema(contentType) {
+    return request(`/api/content-types/${contentType}`, 'GET');
   }
 
   return {
@@ -186,5 +207,7 @@ export function createDrupalClient(apiKey) {
     syncPage,
     createPage,
     fetchSchema,
+    getNodeContentType,
+    getContentTypeSchema,
   };
 }

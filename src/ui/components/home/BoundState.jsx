@@ -2,16 +2,19 @@
  * @file BoundState.jsx
  * Estado "vinculado" da tela Home — quando o NID está definido.
  *
- * Mostra: badge NID, módulo selecionado, preview de dados,
- * botões de Deploy, Sync, Templates, Download.
+ * Mostra: badge NID, banner de sync status, módulo selecionado,
+ * preview de dados, botões de Deploy, Sync, Templates, Download.
  */
 
 import React from 'react';
-import { motion } from 'framer-motion';
-import NidBadge from '../NidBadge';
-import PropertyList from '../PropertyList';
+import { motion, AnimatePresence } from 'framer-motion';
+import NidBadge from '../shared/NidBadge';
+import PropertyList from '../shared/PropertyList';
 import useAppStore from '../../stores/appStore';
 import useAuthStore from '../../stores/authStore';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Loader2, CheckCircle2, AlertTriangle, XCircle, Send, RefreshCw, ScanLine, Layers, Download, Info } from 'lucide-react';
 
 export default function BoundState({
   linkedNid,
@@ -21,6 +24,9 @@ export default function BoundState({
   onDeploy,
   onSync,
   onDownload,
+  syncStatus = 'idle',
+  syncDiff = null,
+  onApplySync,
 }) {
   const navigate = useAppStore((s) => s.navigate);
   const isDevRole = useAuthStore((s) => s.user?.role === 'dev');
@@ -28,23 +34,104 @@ export default function BoundState({
 
   return (
     <motion.div
-      className="glass-panel"
-      style={{ padding: '16px', marginBottom: '16px' }}
+      className="glass-panel p-4 mb-4"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
     >
       {/* Header com NID */}
-      <div className="bound-header">
-        <div className="label">Arquivo vinculado a</div>
+      <div className="flex items-center justify-between mb-5 pb-3.5 border-b border-border">
+        <div className="text-[11px] font-semibold text-text-tertiary uppercase">Arquivo vinculado a</div>
         <NidBadge nid={linkedNid} />
       </div>
 
+      {/* ★ Sync Status Banner */}
+      <AnimatePresence>
+        {syncStatus === 'checking' && (
+          <motion.div
+            className="flex items-center gap-2.5 p-2.5 rounded-[var(--radius-sm)] mb-3.5 text-[11px] font-medium bg-brand-soft border border-brand/20 text-brand"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+          >
+            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+            <span>Verificando sincronização com o Drupal...</span>
+          </motion.div>
+        )}
+
+        {syncStatus === 'synced' && (
+          <motion.div
+            className="flex items-center gap-2.5 p-2.5 rounded-[var(--radius-sm)] mb-3.5 text-[11px] font-medium bg-success-soft border border-success/20 text-success"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            <span>Tudo sincronizado com o Drupal</span>
+          </motion.div>
+        )}
+
+        {syncStatus === 'outdated' && syncDiff && (
+          <motion.div
+            className="flex items-start gap-2.5 p-2.5 rounded-[var(--radius-sm)] mb-3.5 text-[11px] font-medium bg-warning-soft border border-warning/20 text-warning"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+          >
+            <div className="flex flex-col gap-2.5 w-full">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  <strong>{syncDiff.totalChanges}</strong>
+                  {syncDiff.totalChanges === 1 ? ' campo desatualizado' : ' campos desatualizados'}
+                </span>
+              </div>
+              {syncDiff.changed.length > 0 && (
+                <div className="flex flex-col gap-1 p-2 bg-black/15 rounded-[var(--radius-sm)]">
+                  {syncDiff.changed.slice(0, 5).map((c) => (
+                    <div key={c.field} className="flex items-center gap-1.5 text-[10px]">
+                      <span className="font-mono font-semibold text-text-primary">{c.field}</span>
+                      <span className="text-text-tertiary">→</span>
+                      <span className="text-success truncate">{String(c.drupalValue).substring(0, 30)}</span>
+                    </div>
+                  ))}
+                  {syncDiff.changed.length > 5 && (
+                    <span className="text-[9px] text-text-tertiary italic mt-1">
+                      +{syncDiff.changed.length - 5} mais
+                    </span>
+                  )}
+                </div>
+              )}
+              <Button size="sm" variant="default" onClick={onApplySync} className="w-auto">
+                Aplicar Atualizações do Drupal
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
+        {syncStatus === 'error' && (
+          <motion.div
+            className="flex items-center gap-2.5 p-2.5 rounded-[var(--radius-sm)] mb-3.5 text-[11px] font-medium bg-danger-soft border border-danger/20 text-danger"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+          >
+            <XCircle className="w-3.5 h-3.5 shrink-0" />
+            <span>Não foi possível verificar sync</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Módulo selecionado */}
       {hasModule && (
-        <div className="module-chip">
-          <span className="mc-label">MÓDULO</span>
-          <input type="text" value={currentModuleName} readOnly />
+        <div className="flex items-center gap-2 bg-bg border border-border rounded-[var(--radius-sm)] py-2 px-3 mb-3.5">
+          <span className="text-[10px] font-semibold text-text-tertiary tracking-[0.5px]">MÓDULO</span>
+          <input 
+            type="text" 
+            value={currentModuleName} 
+            readOnly 
+            className="flex-1 bg-transparent border-none text-text-primary text-xs font-semibold outline-none"
+          />
         </div>
       )}
 
@@ -54,48 +141,40 @@ export default function BoundState({
       )}
 
       {!hasModule && (
-        <div className="home-hint">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M15 15l-3-3m0 0l-3 3m3-3v9M4 6h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-          <p>Selecione um módulo no Figma para ver os dados extraídos.</p>
+        <div className="flex flex-col items-center text-center py-10 px-5 text-text-tertiary gap-3">
+          <Info className="w-6 h-6" />
+          <p className="text-xs">Selecione um módulo no Figma para ver os dados extraídos.</p>
         </div>
       )}
 
       {/* Ações principais */}
-      <div className="bound-actions">
-        <button className="btn btn-deploy btn-lg" onClick={onDeploy} disabled={!hasModule}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M7 1v9M4 7l3 3 3-3M2 12h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+      <div className="flex flex-col gap-3 mt-5 sm:grid sm:grid-cols-2">
+        <Button variant="deploy" size="lg" onClick={onDeploy} disabled={!hasModule} className="sm:col-span-2">
+          <Send className="w-3.5 h-3.5" />
           Deploy para o Drupal
-        </button>
+        </Button>
 
-        <div className="flex-row">
-          <button className="btn btn-primary" onClick={onSync}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M1 7a6 6 0 0110.89-3.48M13 7a6 6 0 01-10.89 3.48" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <path d="M13 1v3h-3M1 13v-3h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+        <div className="flex gap-2">
+          <Button variant="default" onClick={onSync} className="flex-1">
+            <RefreshCw className="w-3.5 h-3.5" />
             Sync
-          </button>
-          <button className="btn btn-outline" onClick={() => navigate('scan')}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M1 3.5V2a1 1 0 011-1h1.5M10.5 1H12a1 1 0 011 1v1.5M13 10.5V12a1 1 0 01-1 1h-1.5M3.5 13H2a1 1 0 01-1-1v-1.5"
-                stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
+          </Button>
+          <Button variant="outline" onClick={() => navigate('scan')} className="flex-1">
+            <ScanLine className="w-3.5 h-3.5" />
             Scan
-          </button>
+          </Button>
         </div>
 
         {isDevRole && (
-          <div className="flex-row">
-            <button className="btn btn-outline" onClick={() => navigate('templates')}>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('templates')} className="flex-1">
+              <Layers className="w-3.5 h-3.5 mr-1" />
               Templates
-            </button>
-            <button className="btn btn-outline" onClick={onDownload}>
+            </Button>
+            <Button variant="outline" onClick={onDownload} className="flex-1">
+              <Download className="w-3.5 h-3.5 mr-1" />
               JSON
-            </button>
+            </Button>
           </div>
         )}
       </div>

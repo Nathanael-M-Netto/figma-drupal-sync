@@ -8,10 +8,14 @@ import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useScan } from '../../hooks/useScan';
 import { useFigmaMessages } from '../../hooks/useFigmaMessages';
+import { useAuth } from '../../hooks/useAuth';
 import ModuleStatusItem from './ModuleStatusItem';
 import JsonPreview from './JsonPreview';
-import ProgressBar from '../shared/ProgressBar';
+import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import useAppStore from '../../stores/appStore';
+import { Loader2, ScanSearch, Trash2, Send } from 'lucide-react';
 
 export default function ScanReport() {
   const {
@@ -27,10 +31,10 @@ export default function ScanReport() {
   } = useScan();
 
   const figma = useFigmaMessages();
+  const { isDevRole } = useAuth();
   const addToast = useAppStore((s) => s.addToast);
   const linkedNid = figma.linkedNid;
 
-  // Listener para resultado do scan do sandbox
   useEffect(() => {
     function handleMessage(event) {
       const msg = event.data?.pluginMessage;
@@ -54,73 +58,74 @@ export default function ScanReport() {
   };
 
   return (
-    <div className="scan-screen">
+    <div className="flex flex-col gap-4 p-5 h-full">
       {/* Botão de scan */}
-      <div className="scan-actions-top">
-        <button
-          className="btn btn-primary btn-lg"
+      <div className="flex items-center gap-3">
+        <Button
+          size="lg"
+          variant="primary"
+          className="flex-1 bg-brand text-white shadow-[0_4px_14px_rgba(13,153,255,0.3)] hover:bg-brand-hover"
           onClick={runScan}
           disabled={status === 'scanning' || status === 'validating'}
         >
           {status === 'idle' || status === 'done' || status === 'error' ? (
             <>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M1 4V2.5A1.5 1.5 0 012.5 1H4M12 1h1.5A1.5 1.5 0 0115 2.5V4M15 12v1.5a1.5 1.5 0 01-1.5 1.5H12M4 15H2.5A1.5 1.5 0 011 13.5V12"
-                  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="1" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
+              <ScanSearch className="w-4 h-4 mr-2" />
               Escanear Página do Figma
             </>
           ) : (
             <>
-              <span className="spinner" />
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               Escaneando...
             </>
           )}
-        </button>
+        </Button>
 
         {status === 'done' && (
-          <button className="btn btn-outline btn-sm" onClick={reset}>
-            Limpar relatório
-          </button>
+          <Button variant="outline" size="icon" onClick={reset} title="Limpar relatório">
+            <Trash2 className="w-4 h-4" />
+          </Button>
         )}
       </div>
 
       {/* Progress */}
       {(status === 'scanning' || status === 'validating') && (
-        <ProgressBar
-          progress={progress}
-          label={status === 'scanning' ? 'Lendo módulos do Figma...' : 'Validando nomenclatura...'}
-          variant="brand"
-        />
+        <Card className="p-4 m-0 bg-bg-secondary border-none">
+          <Progress
+            value={progress}
+            label={status === 'scanning' ? 'Lendo módulos do Figma...' : 'Validando nomenclatura...'}
+            variant="brand"
+            showPercentage
+          />
+        </Card>
       )}
 
       {/* Relatório */}
       {report && (
         <motion.div
-          className="scan-report glass-panel"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
+          className="glass-panel p-4 flex flex-col gap-4 mb-4"
+          initial={{ opacity: 0, y: 20, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 25 }}
         >
           {/* Resumo */}
-          <div className="scan-summary">
-            <div className="scan-summary-item scan-ok">
-              <span className="scan-summary-count">{report.recognized.length}</span>
-              <span className="scan-summary-label">OK</span>
+          <div className="flex bg-bg-secondary border border-border rounded-[var(--radius-sm)] p-1">
+            <div className="flex-1 flex flex-col items-center justify-center p-2 text-success">
+              <span className="text-sm font-bold">{report.recognized.length}</span>
+              <span className="text-[9px] uppercase font-bold tracking-[0.5px]">OK</span>
             </div>
-            <div className="scan-summary-item scan-warn">
-              <span className="scan-summary-count">{report.warnings.length}</span>
-              <span className="scan-summary-label">Atenção</span>
+            <div className="flex-1 flex flex-col items-center justify-center p-2 text-warning border-l border-border">
+              <span className="text-sm font-bold">{report.warnings.length}</span>
+              <span className="text-[9px] uppercase font-bold tracking-[0.5px]">Atenção</span>
             </div>
-            <div className="scan-summary-item scan-fail">
-              <span className="scan-summary-count">{report.unknown.length}</span>
-              <span className="scan-summary-label">Desconhecido</span>
+            <div className="flex-1 flex flex-col items-center justify-center p-2 text-danger border-l border-border">
+              <span className="text-sm font-bold">{report.unknown.length}</span>
+              <span className="text-[9px] uppercase font-bold tracking-[0.5px]">Desconhecido</span>
             </div>
           </div>
 
           {/* Lista de módulos */}
-          <div className="scan-modules-list">
+          <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1">
             {report.recognized.map((mod) => (
               <ModuleStatusItem key={mod.name} module={mod} />
             ))}
@@ -132,29 +137,33 @@ export default function ScanReport() {
             ))}
           </div>
 
-          {/* Preview JSON */}
-          {jsonPreview && (
+          {/* Preview JSON (apenas DEV) */}
+          {jsonPreview && isDevRole && (
             <JsonPreview data={jsonPreview} title="Payload de Deploy" />
           )}
 
           {/* Botão de deploy */}
-          <div className="scan-deploy-area">
-            <button
-              className={`btn btn-deploy btn-lg ${isDeploying ? 'btn-loading' : ''}`}
+          <div className="pt-3 border-t border-border/50">
+            <Button
+              variant="deploy"
+              size="lg"
               onClick={handleDeploy}
               disabled={!linkedNid || isDeploying}
             >
               {isDeploying ? (
                 <>
-                  <span className="spinner" />
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Enviando...
                 </>
               ) : (
-                'Confirmar Deploy'
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Confirmar Deploy
+                </>
               )}
-            </button>
+            </Button>
             {!linkedNid && (
-              <p className="scan-deploy-hint">Vincule um NID na Home para habilitar o deploy.</p>
+              <p className="text-[11px] text-warning text-center mt-2.5">Vincule um NID na Home para habilitar o deploy.</p>
             )}
           </div>
         </motion.div>
@@ -162,15 +171,9 @@ export default function ScanReport() {
 
       {/* Estado vazio */}
       {status === 'idle' && (
-        <div className="empty-state">
-          <div className="empty-icon">
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-              <rect x="4" y="8" width="32" height="24" rx="3" stroke="currentColor" strokeWidth="1.5" />
-              <line x1="4" y1="20" x2="36" y2="20" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" />
-              <circle cx="20" cy="20" r="6" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2" />
-            </svg>
-          </div>
-          <p>Clique em "Escanear" para analisar<br />os módulos da página atual do Figma.</p>
+        <div className="flex flex-col items-center justify-center p-10 text-center border border-dashed border-border rounded-[var(--radius-md)] bg-bg-secondary text-text-tertiary mt-8">
+          <ScanSearch className="w-10 h-10 mb-4 opacity-50" />
+          <p className="text-xs font-medium leading-relaxed">Clique em "Escanear" para analisar<br />os módulos da página atual do Figma.</p>
         </div>
       )}
     </div>

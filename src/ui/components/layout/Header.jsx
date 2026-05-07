@@ -7,6 +7,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import useAuthStore from '../../stores/authStore';
 import useAppStore from '../../stores/appStore';
+import { LogOut } from 'lucide-react';
 
 const SCREEN_TITLES = {
   home: 'Drupal Sync',
@@ -44,27 +45,28 @@ export default function Header() {
 
   return (
     <motion.header
-      className="app-header"
+      className="flex items-center justify-between h-[var(--spacing-header)] px-5 bg-bg border-b border-border shrink-0 z-10"
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
     >
-      <div className="header-left">
-        <div className={`header-avatar ${isDevRole ? 'avatar-dev' : 'avatar-ux'}`}>
+      <div className="flex items-center gap-3">
+        <div className={`flex items-center justify-center w-8 h-8 rounded-full font-semibold text-sm text-white ${isDevRole ? 'bg-gradient-to-br from-purple to-purple-hover' : 'bg-gradient-to-br from-brand to-brand-hover'}`}>
           {avatarLetter}
         </div>
-        <div className="header-info">
-          <h1 className="header-title">{title}</h1>
-          <span className={`header-role ${isDevRole ? 'role-dev' : 'role-ux'}`}>
+        <div className="flex flex-col">
+          <h1 className="m-0 text-[13px] font-semibold leading-tight text-text-primary">{title}</h1>
+          <span className={`text-[10px] font-medium uppercase tracking-[0.5px] ${isDevRole ? 'text-purple' : 'text-brand'}`}>
             {roleLabel}
           </span>
         </div>
       </div>
-      <button className="header-logout" onClick={handleLogout} title="Sair">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M11 11l3-3-3-3M6 8h8"
-            stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+      <button 
+        className="flex items-center justify-center p-2 rounded bg-transparent border-none text-text-tertiary cursor-pointer transition-colors hover:text-danger hover:bg-danger-soft" 
+        onClick={handleLogout} 
+        title="Sair"
+      >
+        <LogOut className="w-4 h-4" />
       </button>
     </motion.header>
   );

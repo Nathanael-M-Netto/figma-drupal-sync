@@ -9,7 +9,7 @@
  * Inclui fallback mock para desenvolvimento offline.
  */
 
-const API_BASE_URL = 'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io';
 
 // Flag para forçar mock (útil para dev sem backend)
 const FORCE_MOCK = false;
@@ -18,71 +18,7 @@ const FORCE_MOCK = false;
 // MOCK DATA (usado como fallback quando a API não responde)
 // ══════════════════════════════════════════════════════
 
-const MOCK_TEMPLATES = [
-  {
-    module: 'm01_hero',
-    variations: [
-      {
-        name: 'm01_hero_destaque_full_image_v04',
-        component_id: 'cpt_m1_hero_destaque_full_image',
-        nid_origem: 137026,
-        fields: [
-          { name: 'TXT_TITLE', type: 'TEXT', example: '<p>Título Principal</p>' },
-          { name: 'TXT_SUBTITLE', type: 'TEXT', example: '<p>Subtítulo descritivo</p>' },
-          { name: 'VAR_COLOR_SCHEME', type: 'VARIANT', example: 'dark-blue-style' },
-          { name: 'URL_DESKTOP_SOURCE', type: 'URL', example: 'https://cdn.tim.com.br/hero-desktop.jpg' },
-          { name: 'URL_MOBILE_SOURCE', type: 'URL', example: 'https://cdn.tim.com.br/hero-mobile.jpg' },
-          { name: 'BOOL_PHOTO_CIRCLE', type: 'BOOLEAN', example: true },
-          {
-            name: 'SLOT_ITEMS', type: 'SLOT', children: [
-              { name: 'URL_ITEMS_IMAGEM', type: 'URL', example: 'https://cdn.tim.com.br/item.jpg' },
-              { name: 'TXT_ITEMS_ALT', type: 'TEXT', example: 'Descrição da imagem' },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-  {
-    module: 'm02_cards',
-    variations: [
-      {
-        name: 'm02_cards_grid_v01',
-        component_id: 'cpt_m2_cards_grid',
-        nid_origem: 137030,
-        fields: [
-          { name: 'TXT_SECTION_TITLE', type: 'TEXT', example: '<p>Nossos Planos</p>' },
-          { name: 'VAR_LAYOUT', type: 'VARIANT', example: 'grid-3-cols' },
-          { name: 'BOOL_SHOW_PRICES', type: 'BOOLEAN', example: true },
-          {
-            name: 'SLOT_CARDS', type: 'SLOT', children: [
-              { name: 'TXT_CARD_TITLE', type: 'TEXT', example: 'TIM Pré' },
-              { name: 'TXT_CARD_PRICE', type: 'TEXT', example: 'R$ 15,99/mês' },
-              { name: 'URL_CARD_IMAGE', type: 'URL', example: 'https://cdn.tim.com.br/card.jpg' },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-  {
-    module: 'm03_banner',
-    variations: [
-      {
-        name: 'm03_banner_cta_v02',
-        component_id: 'cpt_m3_banner_cta',
-        nid_origem: 137035,
-        fields: [
-          { name: 'TXT_HEADLINE', type: 'TEXT', example: '<p>Oferta Exclusiva</p>' },
-          { name: 'TXT_CTA_TEXT', type: 'TEXT', example: 'Assine Agora' },
-          { name: 'URL_CTA_LINK', type: 'URL', example: 'https://tim.com.br/assine' },
-          { name: 'VAR_COLOR_SCHEME', type: 'VARIANT', example: 'blue-gradient' },
-          { name: 'URL_BG_IMAGE', type: 'URL', example: 'https://cdn.tim.com.br/banner-bg.jpg' },
-        ],
-      },
-    ],
-  },
-];
+const MOCK_TEMPLATES = [];
 
 // ══════════════════════════════════════════════════════
 // API CLIENT
@@ -99,7 +35,7 @@ export async function fetchTemplates(apiKey, componentId = '') {
   // Mock removido, agora sempre usa a API real
 
   try {
-    let endpoint = `${API_BASE_URL}/variants/templates`;
+    let endpoint = `${API_BASE_URL}/api/templates`;
     if (componentId) {
       endpoint += `?component_id=${encodeURIComponent(componentId)}`;
     }
@@ -140,7 +76,7 @@ export async function fetchTemplateByName(templateName, apiKey) {
   // Mock removido, agora sempre usa a API real
 
   try {
-    const endpoint = `${API_BASE_URL}/variants/templates/${encodeURIComponent(templateName)}`;
+    const endpoint = `${API_BASE_URL}/api/templates/${encodeURIComponent(templateName)}`;
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) {
       if (apiKey.startsWith('mock_jwt_') || apiKey.split('.').length === 3) {
@@ -171,16 +107,18 @@ export async function fetchTemplateByName(templateName, apiKey) {
  * @returns {Array} Formato normalizado: [{ module, variations: [...] }]
  */
 function normalizeTemplateResponse(rawData) {
+  // Se vier no formato { variants: [...] }, extrai o array
+  const list = rawData.variants || (Array.isArray(rawData) ? rawData : [rawData]);
+
   // Se já vier como array de objetos com .module e .variations, retorna direto
-  if (Array.isArray(rawData) && rawData[0]?.module && rawData[0]?.variations) {
-    return rawData;
+  if (Array.isArray(list) && list[0]?.module && list[0]?.variations) {
+    return list;
   }
 
-  // Se vier como array flat de variantes, agrupa por módulo
-  const items = Array.isArray(rawData) ? rawData : [rawData];
+  // Agrupa por módulo
   const moduleMap = new Map();
 
-  for (const item of items) {
+  for (const item of list) {
     // Extrai nome do módulo a partir do nome da variante ou component_id
     const variantName = item.name || item.module_name || item.template_name || '';
     const moduleName = extractModuleName(variantName);
@@ -196,7 +134,19 @@ function normalizeTemplateResponse(rawData) {
       name: variantName,
       component_id: item.component_id || '',
       nid_origem: item.nid_origem || null,
-      fields: item.figma_properties || item.fields || [],
+      fields: (() => {
+        // Se figma_properties for um objeto (formato API), converte para array
+        if (item.figma_properties && typeof item.figma_properties === 'object' && !Array.isArray(item.figma_properties)) {
+          return Object.entries(item.figma_properties).map(([name, props]) => ({
+            name,
+            type: (props.type || 'TEXT').toUpperCase(),
+            example: props.example || props.default_value || '',
+            ...props
+          }));
+        }
+        // Fallback para fields se já for array ou vazio
+        return item.fields || Array.isArray(item.figma_properties) ? item.figma_properties : [];
+      })(),
       figma_component_schema: item.figma_component_schema || null,
       drupal_skeleton: item.drupal_skeleton || null,
       metadata: item.metadata || null,

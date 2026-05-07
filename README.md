@@ -1,30 +1,24 @@
-# Figma Drupal Sync — Professional Plugin v3.0
+# Figma Drupal Sync — Professional Plugin v4.0
 
-Plugin profissional para sincronização bidirecional entre design (Figma) e conteúdo (Drupal CMS). Desenvolvido para agilizar o workflow de entrega entre UX Designers e Desenvolvedores.
+Plugin Figma profissional para sincronização bidirecional entre design (Figma) e conteúdo (Drupal CMS). Desenvolvido para transformar o Figma em um ambiente de staging ativo com validação, scan inteligente e deploy automático.
 
-## ✨ Destaques da v3.0
-- **Design System Glassmorphism:** Interface moderna, translúcida e responsiva.
-- **RBAC (Role-Based Access Control):** Interfaces customizadas para UX (focada em deploy) e DEV (focada em schema e integração).
-- **Scanner Inteligente:** Análise automática de módulos da página com cruzamento de dados via API.
-- **Deploy em Massa:** Envio da árvore hierárquica completa em uma única chamada.
-- **Multi-Mapeamento:** Sincronização automática entre variantes Desktop e Mobile.
+## 📚 Documentação Central
+
+Toda a documentação técnica foi consolidada na pasta `docs/` para manter a raiz do projeto limpa.
+
+- **[Guia de Arquitetura e Código (CODE_ARCHITECTURE.md)](docs/CODE_ARCHITECTURE.md)**: Explicação de todos os arquivos, fluxos, stores do Zustand, design system e convenções de nomenclatura. Leia este arquivo para entender como o plugin funciona.
+- **[Referência da API (API_REFERENCE.md)](docs/API_REFERENCE.md)**: Endpoints do middleware Azure, payloads aceitos e fluxo de deploy.
+
+*(A pasta `.planning/` contém artefatos internos gerenciados por agentes de automação. Você não precisa alterá-los manualmente).*
 
 ---
 
-## 🏗️ Arquitetura Modular
-
-O projeto utiliza **Vite + React** para a UI e um backend modular em JS para o sandbox do Figma.
-
-```
-src/
-├── plugin/          # Backend (Sandbox) - Manipulação de nós do Figma
-├── api/             # Clientes de API (Drupal, Auth, Templates)
-├── utils/           # Mapeamento de nós, cores e validadores
-└── ui/              # Frontend React (Interface Glassmorphism)
-    ├── components/  # Componentes de UI modulares
-    ├── hooks/       # Hooks customizados (useScan, useAuth, useFigmaMessages)
-    └── stores/      # Gestão de estado global (Zustand)
-```
+## ✨ Destaques da v4.0
+- **Templates como Mapa de Referência**: Catálogo embutido para guiar os desenvolvedores na nomenclatura das layers.
+- **Motor de Scan & Property Loading**: Match fuzzy com templates e linkagem automática de propriedades entre frames Desktop e Mobile.
+- **Auto-Sync Inteligente**: Diff visual entre o Figma e o Drupal sempre que o plugin é aberto em um nó existente.
+- **Design System Liquid Glass**: UI translúcida de alta performance, construída apenas com variáveis CSS e filtros SVG.
+- **Deploy Unificado**: Tela completa de revisão com diff de campos do content-type.
 
 ---
 
@@ -41,7 +35,7 @@ npm install
 | `npm run build` | Build completo para produção (`dist/`) |
 | `npm run dev` | Dev server para preview da UI |
 | `npm run build:ui` | Build apenas da interface |
-| `npm run build:plugin` | Build apenas do sandbox |
+| `npm run build:plugin` | Build apenas do sandbox (`main.js`) |
 
 ### Como carregar no Figma
 1. Execute `npm run build`.
@@ -50,20 +44,4 @@ npm install
 
 ---
 
-## 🛠️ Convenções de Nomenclatura
-Para que a extração automática funcione, siga os prefixos:
-- `TXT_` : Campos de texto.
-- `VAR_` : Variantes e enums.
-- `URL_` : Links e imagens.
-- `BOOL_` : Toggles booleanos.
-- `MOD_` : Frames de módulos.
-- `COMP_` : Componentes internos.
-
----
-
-## 📄 Documentação
-- [Guia Técnico Detalhado](DOCS.md)
-- [Instruções para Desenvolvedores](DEV_INSTRUCTIONS.md)
-
----
-**Status:** Produção v3.0 (Estável)
+**Status:** Produção v4.0 (Estável)

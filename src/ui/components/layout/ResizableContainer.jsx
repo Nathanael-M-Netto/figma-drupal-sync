@@ -8,8 +8,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import useAppStore, { SCREEN_SIZES } from '../../stores/appStore';
+import useAppStore from '../../stores/appStore';
 import { postToFigma } from '../../hooks/useFigmaMessages';
+import { cn } from '@/lib/utils';
 
 /**
  * Envia comando de resize para o sandbox do Figma.
@@ -58,15 +59,23 @@ export default function ResizableContainer({ children }) {
   const direction = currentIdx >= prevIdx ? 1 : -1;
 
   return (
-    <div className="resizable-container" ref={containerRef}>
+    <div className="relative flex-1 overflow-hidden" ref={containerRef}>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={currentScreen}
-          className="screen-wrapper"
-          initial={{ opacity: 0, x: direction * 30 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: direction * -30 }}
-          transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+          className={cn(
+            "absolute inset-0 overflow-y-auto overflow-x-hidden p-5",
+            currentScreen === 'login' ? "pb-5" : "pb-[calc(var(--spacing-nav)+20px)]"
+          )}
+          initial={{ opacity: 0, x: direction * 40, filter: 'blur(10px)' }}
+          animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, x: direction * -40, filter: 'blur(10px)' }}
+          transition={{ 
+            type: 'spring', 
+            stiffness: 380, 
+            damping: 30,
+            mass: 0.8
+          }}
         >
           {children}
         </motion.div>

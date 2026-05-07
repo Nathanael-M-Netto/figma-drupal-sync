@@ -4,6 +4,9 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { Search, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 export default function TemplateSearch({ searchQuery, onSearchChange, typeFilter, onTypeChange }) {
   const [localQuery, setLocalQuery] = useState(searchQuery);
@@ -18,38 +21,37 @@ export default function TemplateSearch({ searchQuery, onSearchChange, typeFilter
   }, [localQuery]);
 
   return (
-    <div className="template-search">
-      <div className="search-field">
-        <svg className="search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M9.5 9.5L13 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-        <input
+    <div className="flex flex-col gap-3 mt-1 mb-2">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
+        <Input
           type="text"
-          className="input-field search-input"
+          className="pl-9 pr-9"
           placeholder="Buscar módulo ou variação..."
           value={localQuery}
           onChange={(e) => setLocalQuery(e.target.value)}
         />
         {localQuery && (
           <button
-            className="search-clear"
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full bg-transparent border-none text-text-tertiary hover:text-text-primary hover:bg-black/10 cursor-pointer transition-colors"
             onClick={() => { setLocalQuery(''); onSearchChange(''); }}
           >
-            ×
+            <X className="w-3.5 h-3.5" />
           </button>
         )}
       </div>
 
-      <div className="search-filters">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
         {['', 'hero', 'cards', 'banner'].map((filter) => (
-          <button
+          <Button
             key={filter}
-            className={`filter-chip ${typeFilter === filter ? 'filter-chip-active' : ''}`}
+            variant={typeFilter === filter ? 'primary' : 'outline'}
+            size="sm"
+            className="capitalize rounded-full whitespace-nowrap h-7 text-[11px]"
             onClick={() => onTypeChange(filter)}
           >
             {filter || 'Todos'}
-          </button>
+          </Button>
         ))}
       </div>
     </div>

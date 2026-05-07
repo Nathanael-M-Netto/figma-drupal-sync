@@ -1,21 +1,62 @@
 # Project Roadmap
 
-**Phase 1: Foundation & Role-Based Access Control (RBAC)**
+**Phase 1: Foundation & Role-Based Access Control (RBAC)** ✅
 - Refatorar o estado global de autenticação para suportar perfis (UX Designer vs DEV).
-- Implementar a lógica de permissões: restringir acesso da UX à visualização de schemas, templates e payloads JSON.
-- Remover branding restrito ("TIM") e estabelecer textos e variáveis agnósticas (White-label).
-- Configurar base do novo design system no `App.css` (variáveis e utilitários Glassmorphism).
+- Implementar a lógica de permissões.
+- White-label e design system base.
 
-**Phase 2: UI Overhaul & Responsive Layout**
-- Transformar todas as telas (Login, Home, Scanner) para a nova identidade visual (Glassmorphism, transições fluidas, botões nítidos).
-- Implementar o redimensionamento manual da janela do plugin no Figma (`ResizableContainer`).
-- Polir feedback visual (toasts, progress bars, e modais).
+**Phase 2: UI Overhaul & Responsive Layout** ✅
+- Glassmorphism, transições fluidas, ResizableContainer.
+- Feedback visual (toasts, progress bars, modais).
 
-**Phase 3: Smart Scanner & Template Catalog Integration**
-- Refinar o `nodeMapper.js` e `scanValidator.js` para captura flexível de prefixos (`TXT_`, `URL_`, `VAR_`).
-- Desenvolver a interface do Catálogo de Templates (exclusivo para DEV).
-- Integrar chamadas da API do Drupal para listagem de templates e download de skeletons/schemas.
-- Habilitar preview de JSON interativo para o perfil DEV antes do Deploy.
+**Phase 3: Smart Scanner & Template Catalog Integration** ✅
+- nodeMapper.js, scanValidator.js, catálogo de templates.
+- Integração API Drupal para templates e schemas.
+
+**Phase 4: API Realignment & Node Metadata Support** ✅
+- Azure Container Apps, autenticação via header, endpoint unificado.
+
+**Phase 5: Templates como Mapa de Referência (DEV)** ✅
+- TemplateList com stats header, expand/collapse all, usage guide.
+- VariationCard com guide steps, copy-all-props, preview placeholder.
+- FieldList com ícones por tipo e copy-to-clipboard.
+
+**Phase 6: Scan & Property Loading Engine** ✅
+- matchModuleToTemplate(), identifySharedProps(), buildFullPageScanReport().
+- scan-and-load-props handler: cria component properties e linka Desktop↔Mobile.
+- PropertyLoadingWizard.jsx: wizard de setup em 4 etapas.
+
+**Phase 7: Auto-Sync ao Abrir** ✅
+- auto-sync-check na inicialização do plugin.
+- Diff engine: compara Figma com Drupal, gera lista de alterações.
+- BoundState sync banner: checking/synced/outdated/error.
+
+**Phase 8: Tela de Deploy Completa** ✅
+- DeployScreen com dois modos (update com diff / newPage com resumo).
+- DeployDiff: diff visual campo a campo com checkboxes de inclusão/exclusão.
+- NodeFieldsForm: formulário dinâmico de campos do content-type.
+- deployStore.js: estado completo do deploy.
+
+**Phase 9: Inspeção de Módulos** ✅
+- InspectScreen: scan de página com lista de módulos detectados.
+- ModuleDetail: expansível com Desktop/Mobile breakdown e props.
+
+**Phase 10: Campos Essenciais & Auto-Detecção** ✅
+- essentialFields.js: mapeamento Figma layers → Drupal fields com fuzzy match.
+- Integração com NodeFieldsForm para indicar auto-detected fields.
+
+**Phase 11: Design System Liquid Glass** ✅
+- GlassSurface.jsx: componente base com SVG feDisplacementMap.
+- GlassSurface.css: levels, hover, glow com conic-gradient animado.
+- GlassCard.jsx: wrapper pré-configurado para cards.
+
+**Phase 12: Polish & Estabilidade** 🔴 Em progresso
+- [ ] Empty states com ícones em todas as telas
+- [ ] Skeleton loading para chamadas API
+- [ ] Error boundaries em componentes críticos
+- [ ] White-label: remover referências residuais
+- [ ] Debounce em chamadas API
+- [ ] Logging estruturado
 
 ---
-*Roadmap gerado em: 2026-04-30*
+*Roadmap atualizado em: 2026-05-06*

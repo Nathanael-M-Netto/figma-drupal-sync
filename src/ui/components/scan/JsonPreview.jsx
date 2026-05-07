@@ -5,6 +5,7 @@
  */
 
 import React, { useState } from 'react';
+import { Copy, Check } from 'lucide-react';
 
 export default function JsonPreview({ data, title = 'Payload JSON' }) {
   const [copied, setCopied] = useState(false);
@@ -13,8 +14,6 @@ export default function JsonPreview({ data, title = 'Payload JSON' }) {
 
   const handleCopy = async () => {
     try {
-      // No contexto do Figma plugin, navigator.clipboard pode não funcionar
-      // Usa fallback com textarea
       const textarea = document.createElement('textarea');
       textarea.value = jsonString;
       document.body.appendChild(textarea);
@@ -30,32 +29,27 @@ export default function JsonPreview({ data, title = 'Payload JSON' }) {
   };
 
   return (
-    <div className="json-preview">
-      <div className="json-preview-header">
-        <span className="json-preview-title">{title}</span>
+    <div className="flex flex-col rounded-[var(--radius-sm)] border border-border bg-[#1e1e1e] overflow-hidden mt-2">
+      <div className="flex justify-between items-center px-3 py-2 bg-black/40 border-b border-border/50">
+        <span className="text-[10px] font-bold text-[#a8b2d1] uppercase tracking-[1px]">{title}</span>
         <button
-          className={`json-preview-copy ${copied ? 'copied' : ''}`}
+          className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.5px] p-1 rounded bg-transparent border-none cursor-pointer transition-colors ${copied ? 'text-success' : 'text-text-tertiary hover:text-white'}`}
           onClick={handleCopy}
         >
           {copied ? (
             <>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <Check className="w-3.5 h-3.5" />
               Copiado!
             </>
           ) : (
             <>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <rect x="4" y="4" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                <path d="M8 4V2.5A1.5 1.5 0 006.5 1h-4A1.5 1.5 0 001 2.5v4A1.5 1.5 0 002.5 8H4" stroke="currentColor" strokeWidth="1.2" />
-              </svg>
+              <Copy className="w-3.5 h-3.5" />
               Copiar
             </>
           )}
         </button>
       </div>
-      <pre className="json-preview-code">
+      <pre className="p-3 m-0 overflow-x-auto text-[10px] font-mono text-[#a8b2d1] leading-[1.4]">
         <code>{jsonString}</code>
       </pre>
     </div>

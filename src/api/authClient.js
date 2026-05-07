@@ -12,7 +12,7 @@
 
 const USE_MOCK = true;
 
-const API_BASE_URL = 'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io';
 
 // ══════════════════════════════════════════════════════
 // MOCK DATA
@@ -22,13 +22,13 @@ const MOCK_USERS = {
   'UX': {
     id: 1,
     name: 'Designer UX',
-    email: 'ux@tim.com.br',
+    email: 'ux@example.com',
     role: 'ux',
   },
   'DEV': {
     id: 2,
     name: 'Developer',
-    email: 'dev@tim.com.br',
+    email: 'dev@example.com',
     role: 'dev',
   },
 };
