@@ -3,17 +3,36 @@
  * Card expandível de uma variação de template.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import FieldList from './FieldList';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, Copy, Check, FileJson, Image as ImageIcon } from 'lucide-react';
+import { ChevronDown, Copy, Check, FileJson, Image as ImageIcon, Smartphone, Monitor } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+
+const MOBILE_BREAKPOINT_PX = 360;
 
 export default function VariationCard({ variation, onDownloadSchema }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [allCopied, setAllCopied] = useState(false);
   const [nameCopied, setNameCopied] = useState(false);
+  const [previewMode, setPreviewMode] = useState('desktop');
+  const previewRef = useRef(null);
+
+  // Observa o tamanho do container do preview e alterna entre mobile/desktop
+  useEffect(() => {
+    if (!isExpanded || !previewRef.current) return;
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const obs = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        setPreviewMode(w < MOBILE_BREAKPOINT_PX ? 'mobile' : 'desktop');
+      }
+    });
+    obs.observe(previewRef.current);
+    return () => obs.disconnect();
+  }, [isExpanded]);
 
   const fieldCount = variation.fields?.length || 0;
 
@@ -57,7 +76,15 @@ export default function VariationCard({ variation, onDownloadSchema }) {
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex flex-col flex-1 min-w-0 gap-1.5">
-          <span className="text-xs font-bold text-text-primary truncate">{variation.name}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            {variation.title && variation.title !== variation.name && (
+              <span className="text-xs font-bold text-text-primary truncate">{variation.title}</span>
+            )}
+            {variation.variantId && (
+              <Badge variant="info" size="sm" className="shrink-0">{variation.variantId}</Badge>
+            )}
+          </div>
+          <span className="text-[10px] font-mono text-text-tertiary truncate">{variation.name}</span>
           <div className="flex flex-wrap gap-1.5 items-center">
             <span className="text-[9px] font-bold bg-black/20 text-text-secondary px-1.5 py-0.5 rounded uppercase tracking-[0.5px]">
               {fieldCount} campos
@@ -111,12 +138,21 @@ export default function VariationCard({ variation, onDownloadSchema }) {
               </div>
             </div>
 
-            {/* Preview Visual Real da API */}
-            <div className="relative aspect-video mb-4 border border-border rounded-[var(--radius-sm)] overflow-hidden bg-black/20 group/img">
-              <img 
+            {/* Preview Visual Real da API — responsivo ao tamanho do container */}
+            <div
+              ref={previewRef}
+              className={`relative mb-4 border border-border rounded-[var(--radius-sm)] overflow-hidden bg-black/20 group/img transition-all ${
+                previewMode === 'mobile' ? 'aspect-[9/16] max-w-[200px] mx-auto' : 'aspect-video'
+              }`}
+            >
+              <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/60 text-[9px] text-white font-bold uppercase tracking-wider">
+                {previewMode === 'mobile' ? <Smartphone className="w-2.5 h-2.5" /> : <Monitor className="w-2.5 h-2.5" />}
+                {previewMode}
+              </div>
+              <img
                 src={`https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io/api/screenshots/${variation.name}`}
                 alt={variation.name}
-                className="w-full h-full object-contain"
+                className={`w-full h-full ${previewMode === 'mobile' ? 'object-cover object-top' : 'object-contain'}`}
                 onError={(e) => {
                   e.target.style.display = 'none';
                   e.target.nextSibling.style.display = 'flex';

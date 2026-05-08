@@ -41,6 +41,10 @@ export function useFigmaMessages() {
   const [syncDiff, setSyncDiff] = useState(null); // { changed: [], added: [], removed: [], totalChanges: 0 }
   const [autoSyncNid, setAutoSyncNid] = useState(null);
 
+  // Env settings (env_host + env para os payloads da API)
+  const [envHost, setEnvHostState] = useState('');
+  const [envName, setEnvNameState] = useState('ambiteste');
+
   // Ref para callbacks que dependem de estado atualizado
   const callbacksRef = useRef({});
 
@@ -130,7 +134,12 @@ export function useFigmaMessages() {
         else if (msg.type === 'auto-sync-check') {
           setAutoSyncNid(msg.nid);
           setSyncStatus('checking');
-          // A UI (App.jsx) vai interceptar isso e fazer o fetch real
+        }
+
+        // --- Env Settings ---
+        else if (msg.type === 'init-env-settings') {
+          if (msg.envHost !== undefined) setEnvHostState(msg.envHost);
+          if (msg.env !== undefined) setEnvNameState(msg.env || 'ambiteste');
         }
 
         // --- do-sync-fetch (sandbox pede à UI para fazer o fetch) ---
@@ -194,8 +203,20 @@ export function useFigmaMessages() {
     postToFigma({ type: 'save-api-key', key });
   }, [setStoreApiKey]);
 
-  const readFullPage = useCallback(() => {
-    postToFigma({ type: 'read-full-page' });
+  /**
+   * Lê a página inteira do Figma e retorna a árvore de módulos.
+   * Pode ser usado de duas formas:
+   *   1. await figma.readFullPage()  → resolve com a mensagem completa
+   *   2. figma.readFullPage(callback) → invoca callback ao receber resposta
+   */
+  const readFullPage = useCallback((callback) => {
+    return new Promise((resolve) => {
+      callbacksRef.current['page-modules'] = (msg) => {
+        if (typeof callback === 'function') callback(msg);
+        resolve(msg);
+      };
+      postToFigma({ type: 'read-full-page' });
+    });
   }, []);
 
   const showStatus = useCallback((text, type) => {
@@ -217,14 +238,15 @@ export function useFigmaMessages() {
     return clean;
   }, [extractedData]);
 
-  /**
-   * Atualiza o status do auto-sync após verificar com a API.
-   * @param {'synced'|'outdated'|'error'} newStatus
-   * @param {Object|null} diff - Diff de campos
-   */
   const setSyncResult = useCallback((newStatus, diff = null) => {
     setSyncStatus(newStatus);
     setSyncDiff(diff);
+  }, []);
+
+  const saveEnvSettings = useCallback((newEnvHost, newEnv) => {
+    setEnvHostState(newEnvHost || '');
+    setEnvNameState(newEnv || 'ambiteste');
+    postToFigma({ type: 'save-env-settings', envHost: newEnvHost || '', env: newEnv || 'ambiteste' });
   }, []);
 
   return {
@@ -240,6 +262,8 @@ export function useFigmaMessages() {
     syncStatus,
     syncDiff,
     autoSyncNid,
+    envHost,
+    envName,
 
     // Ações
     bindNid,
@@ -259,5 +283,6 @@ export function useFigmaMessages() {
     setCurrentModuleName,
     onceMessage,
     setSyncResult,
+    saveEnvSettings,
   };
 }

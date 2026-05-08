@@ -120,22 +120,28 @@ function normalizeTemplateResponse(rawData) {
   const moduleMap = new Map();
 
   for (const item of list) {
-    // Na v2, temos component_title (ex: "Conjunto CTA") que é a família ideal.
-    // template_name é o ID único da variação. v01, v02 etc costumam vir no variant_id ou no final do nome.
-    const variantName = item.variant_id || item.template_name || item.name || item.componentName || 'Variação sem nome';
-    
-    // Tenta: component_title -> extractModuleName(variantName) -> "Outros"
-    const groupName = item.component_title || extractModuleName(variantName || item.module_name || '');
+    // module_name é o identificador técnico canônico (ex: m13_conjunto_cta_padrao).
+    // Default mode da API v2 retorna { componentName, properties }; variants_only=true retorna { module_name, component_title, ... }.
+    const moduleName = item.module_name || item.componentName || item.name || 'Módulo sem nome';
+    const variantName = item.variant_id || item.template_name || moduleName;
 
-    if (!moduleMap.has(groupName)) {
-      moduleMap.set(groupName, {
-        module: groupName,
+    // Título humanizado: prefere component_title da API, fallback para humanizeModuleName(module_name)
+    const humanTitle = item.component_title || humanizeModuleName(moduleName);
+    const groupKey = moduleName;
+
+    if (!moduleMap.has(groupKey)) {
+      moduleMap.set(groupKey, {
+        module: groupKey,
+        moduleName,
+        title: humanTitle,
         variations: [],
       });
     }
 
-    moduleMap.get(groupName).variations.push({
-      name: variantName,
+    moduleMap.get(groupKey).variations.push({
+      name: moduleName,
+      variantId: item.variant_id || null,
+      title: humanTitle,
       component_id: item.component_id || '',
       nid_origem: item.nid_origem || null,
       fields: (() => {
@@ -161,9 +167,9 @@ function normalizeTemplateResponse(rawData) {
     });
   }
 
-  // Converte para array e ordena alfabeticamente pelo nome do módulo/família
-  return Array.from(moduleMap.values()).sort((a, b) => 
-    a.module.localeCompare(b.module, undefined, { numeric: true, sensitivity: 'base' })
+  // Converte para array e ordena alfabeticamente pelo module_name (ordem natural numérica para m01, m02, m13...)
+  return Array.from(moduleMap.values()).sort((a, b) =>
+    a.moduleName.localeCompare(b.moduleName, undefined, { numeric: true, sensitivity: 'base' })
   );
 }
 
@@ -177,7 +183,28 @@ function extractModuleName(variantName) {
   // Tenta capturar o padrão mXX_nome (ex: m01_hero) ignorando sufixos como _v04 ou _padrao
   const match = normalized.match(/^(m\d+_[a-z0-9]+(_[a-z0-9]+)?)/);
   if (match) return match[1];
-  
+
   // Fallback: remove sufixos de versão comuns
   return normalized.replace(/(_v\d+|_padrao|_desk|_mobile|_mob)$/g, '') || 'Outros';
+}
+
+/**
+ * Converte module_name técnico em título humanizado.
+ * Ex: "m13_conjunto_cta_padrao" → "Conjunto CTA Padrão"
+ *     "m05_faq_sanfona"          → "FAQ Sanfona"
+ */
+export function humanizeModuleName(moduleName) {
+  if (!moduleName) return 'Outros';
+  const ACRONYMS = new Set(['cta', 'faq', 'cms', 'tim', 'seo', 'b2b', 'b2c', 'api', 'url']);
+  const stripped = moduleName.toLowerCase().replace(/^m\d+_/, '');
+  const words = stripped.split('_').filter(Boolean);
+  return words
+    .map((w) => {
+      if (ACRONYMS.has(w)) return w.toUpperCase();
+      // Restaura acentos comuns que se perdem em slugs
+      const accentMap = { padrao: 'Padrão', acao: 'Ação', sancao: 'Sanção' };
+      if (accentMap[w]) return accentMap[w];
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    })
+    .join(' ');
 }

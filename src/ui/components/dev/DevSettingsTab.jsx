@@ -11,11 +11,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import useAppStore from '../../stores/appStore';
-import { Link, Database, FileJson, Layers, RefreshCw, Upload, Download, Trash2, Zap } from 'lucide-react';
+import { Link, Database, FileJson, Layers, RefreshCw, Upload, Download, Trash2, Zap, Eye, EyeOff, Globe } from 'lucide-react';
 
 export default function DevSettingsTab({
   linkedNid,
   apiKey: initialApiKey,
+  envHost: initialEnvHost,
+  envName: initialEnvName,
   currentModuleName,
   extractedData,
   currentMeta,
@@ -23,6 +25,7 @@ export default function DevSettingsTab({
   onForceNid,
   onUnlinkNid,
   onSaveApiKey,
+  onSaveEnvSettings,
   onLoadSchema,
   onClearSchema,
   onUpdateProps,
@@ -44,6 +47,9 @@ export default function DevSettingsTab({
   const [showJsonModal, setShowJsonModal] = useState(false);
   const [schemaText, setSchemaText] = useState('');
   const [jsonText, setJsonText] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [envHostInput, setEnvHostInput] = useState(initialEnvHost || '');
+  const [envInput, setEnvInput] = useState(initialEnvName || 'ambiteste');
 
   useEffect(() => {
     if (linkedNid) setForceNidInput(linkedNid);
@@ -52,6 +58,14 @@ export default function DevSettingsTab({
   useEffect(() => {
     setApiKeyInput(initialApiKey || '');
   }, [initialApiKey]);
+
+  useEffect(() => {
+    setEnvHostInput(initialEnvHost || '');
+  }, [initialEnvHost]);
+
+  useEffect(() => {
+    setEnvInput(initialEnvName || 'ambiteste');
+  }, [initialEnvName]);
 
   useEffect(() => {
     setDevModuleName(currentModuleName || '');
@@ -90,16 +104,75 @@ export default function DevSettingsTab({
           
           <div className="mt-4 pt-4 border-t border-border">
             <label className="block text-[10px] font-bold text-text-secondary mb-1.5 uppercase tracking-[0.5px]">API Key (X-TIM-Key)</label>
-            <Input
-              type="text"
-              placeholder="Digite a API Key"
-              value={apiKeyInput}
-              onChange={(e) => setApiKeyInput(e.target.value)}
-            />
+            <div className="relative">
+              <Input
+                type={showApiKey ? 'text' : 'password'}
+                placeholder="Digite a API Key"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                className="pr-9"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                aria-label={showApiKey ? 'Ocultar API Key' : 'Mostrar API Key'}
+                onClick={() => setShowApiKey((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-black/10 transition-colors border-none bg-transparent outline-none"
+              >
+                {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
             <Button variant="outline" className="w-full mt-2" onClick={() => apiKeyInput.trim() && onSaveApiKey(apiKeyInput.trim())}>
               Salvar API Key
             </Button>
           </div>
+        </Card>
+      </div>
+
+      <div className="h-px bg-border mx-5 my-2" />
+
+      {/* ── Ambiente ── */}
+      <div className="p-5 pb-0">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-success uppercase tracking-[1px] mb-3">
+          <Globe className="w-4 h-4" />
+          Ambiente
+        </h2>
+        <Card className="p-4 mb-5">
+          <div className="mb-3">
+            <label className="block text-[10px] font-bold text-text-secondary mb-1.5 uppercase tracking-[0.5px]">Env Host (SSH)</label>
+            <Input
+              type="text"
+              placeholder="user@host.ssh.prod.acquia-sites.com"
+              value={envHostInput}
+              onChange={(e) => setEnvHostInput(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="text-[10px] text-text-tertiary mt-1">Enviado em todos os payloads PUT/POST como env_host</p>
+          </div>
+          <div className="mb-4">
+            <label className="block text-[10px] font-bold text-text-secondary mb-1.5 uppercase tracking-[0.5px]">Env</label>
+            <select
+              value={envInput}
+              onChange={(e) => setEnvInput(e.target.value)}
+              className="w-full px-3 py-2 bg-bg border border-border rounded-[var(--radius-sm)] text-text-primary text-xs outline-none focus:border-brand transition-colors"
+            >
+              <option value="ambiteste">ambiteste</option>
+              <option value="stage">stage</option>
+              <option value="prod">prod</option>
+            </select>
+          </div>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => {
+              if (onSaveEnvSettings) onSaveEnvSettings(envHostInput.trim(), envInput);
+              addToast({ type: 'success', message: 'Configurações de ambiente salvas.' });
+            }}
+          >
+            Salvar Ambiente
+          </Button>
         </Card>
       </div>
 

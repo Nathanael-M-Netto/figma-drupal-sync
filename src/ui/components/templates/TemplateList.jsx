@@ -136,7 +136,12 @@ export default function TemplateList({ apiKey }) {
                   onClick={() => toggleModule(mod.module)}
                 >
                   <div className="flex flex-col gap-1.5 flex-1 overflow-hidden">
-                    <span className="text-[13px] font-bold text-text-primary truncate">{mod.module}</span>
+                    <span className="text-[13px] font-bold text-text-primary truncate">
+                      {mod.title || mod.module}
+                    </span>
+                    {mod.moduleName && mod.moduleName !== (mod.title || mod.module) && (
+                      <span className="text-[10px] font-mono text-text-tertiary truncate">{mod.moduleName}</span>
+                    )}
                     <div className="flex gap-2 items-center">
                       <span className="text-[10px] bg-black/20 text-text-secondary px-1.5 py-0.5 rounded font-semibold whitespace-nowrap">
                         {variationCount} {variationCount === 1 ? 'variação' : 'variações'}

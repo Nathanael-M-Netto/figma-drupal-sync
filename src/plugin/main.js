@@ -398,20 +398,46 @@ function lerTextosDaTela() {
 }
 
 /**
- * Lê toda a página e retorna a árvore hierárquica de módulos.
- * Usado para Deploy completo da página.
+ * Lê todas as pages do arquivo Figma e retorna a árvore hierárquica de módulos
+ * agregada (em ordem visual: page-by-page, top-to-bottom).
+ *
+ * Como o manifest declara `documentAccess: "dynamic-page"`, é necessário
+ * carregar cada page assíncronamente antes de varrê-la.
  */
-function readFullPage() {
-  const modules = buildModuleTree(figma.currentPage);
+async function readFullPage() {
+  // Garante acesso a todas as pages do documento
+  if (typeof figma.loadAllPagesAsync === 'function') {
+    try {
+      await figma.loadAllPagesAsync();
+    } catch (e) {
+      console.warn('[main] loadAllPagesAsync falhou, usando currentPage:', e);
+    }
+  }
+
+  const allModules = [];
+  const pages = figma.root.children || [figma.currentPage];
+
+  let baseOrder = 0;
+  for (const page of pages) {
+    if (!page || page.type !== 'PAGE') continue;
+    const modules = buildModuleTree(page);
+    for (const m of modules) {
+      allModules.push({
+        name: m.name,
+        order: baseOrder + m.order,
+        data: m.data,
+        nodeId: m.nodeId,
+        pageName: page.name,
+        pageId: page.id,
+      });
+    }
+    baseOrder += modules.length;
+  }
 
   figma.ui.postMessage({
     type: 'page-modules',
-    modules: modules.map((m) => ({
-      name: m.name,
-      order: m.order,
-      data: m.data,
-      nodeId: m.nodeId,
-    })),
+    modules: allModules,
+    pages: pages.filter((p) => p?.type === 'PAGE').map((p) => ({ id: p.id, name: p.name })),
   });
 }
 
@@ -485,16 +511,23 @@ figma.ui.onmessage = async (msg) => {
 
   // --- Deploy ---
   else if (msg.type === 'read-full-page') {
-    // Lê a página inteira para montar o payload hierárquico
-    readFullPage();
+    // Lê TODAS as pages do arquivo para montar o payload hierárquico completo
+    await readFullPage();
   }
 
   // --- Scan & Property Loading (Fase 6) ---
   else if (msg.type === 'scan-and-load-props') {
-    // Escaneia TODA a página, faz match com catálogo, e carrega propriedades
-    const page = figma.currentPage;
+    // Escaneia TODAS as pages, faz match com catálogo, e carrega propriedades
+    if (typeof figma.loadAllPagesAsync === 'function') {
+      try { await figma.loadAllPagesAsync(); } catch (e) {}
+    }
+    const pages = (figma.root.children || []).filter((p) => p?.type === 'PAGE');
     const templates = msg.templates || [];
-    const report = buildFullPageScanReport(page, templates);
+    const report = pages.flatMap((p) =>
+      buildFullPageScanReport(p, templates).map((r) => ({ ...r, pageId: p.id, pageName: p.name }))
+    );
+    // Mantém a referência da page para encontrar o rootNode mais adiante
+    const pageById = new Map(pages.map((p) => [p.id, p]));
 
     // Para cada módulo com match, tenta carregar propriedades
     let totalPropsCreated = 0;
@@ -503,9 +536,10 @@ figma.ui.onmessage = async (msg) => {
     for (const mod of report) {
       if (mod.matchResult.matchType === 'none') continue;
 
-      // Busca o nó raiz
+      // Busca o nó raiz na page correta (multi-page)
+      const ownerPage = pageById.get(mod.pageId) || figma.currentPage;
       let rootNode = null;
-      for (const child of page.children) {
+      for (const child of ownerPage.children) {
         if (child.id === mod.nodeId) {
           rootNode = child;
           break;
@@ -622,18 +656,25 @@ figma.ui.onmessage = async (msg) => {
     figma.notify(`Scan concluído: ${totalPropsCreated} props criadas, ${totalLinksCreated} links feitos.`);
   }
 
-  // Relatório de scan sem carregar props (apenas leitura)
+  // Relatório de scan sem carregar props (apenas leitura, multi-page)
   else if (msg.type === 'full-page-scan-report') {
-    const page = figma.currentPage;
+    if (typeof figma.loadAllPagesAsync === 'function') {
+      try { await figma.loadAllPagesAsync(); } catch (e) {}
+    }
+    const pages = (figma.root.children || []).filter((p) => p?.type === 'PAGE');
     const templates = msg.templates || [];
-    const report = buildFullPageScanReport(page, templates);
+    const report = pages.flatMap((p) =>
+      buildFullPageScanReport(p, templates).map((r) => ({ ...r, pageId: p.id, pageName: p.name }))
+    );
 
     figma.ui.postMessage({
       type: 'scan-report-result',
-      report: report.map(r => ({
+      report: report.map((r) => ({
         name: r.name,
         nodeId: r.nodeId,
         order: r.order,
+        pageName: r.pageName,
+        pageId: r.pageId,
         matchType: r.matchResult.matchType,
         matchScore: r.matchResult.score,
         templateName: r.matchResult.template?.componentName || null,
@@ -641,6 +682,7 @@ figma.ui.onmessage = async (msg) => {
         expectedProps: r.expectedProps,
         foundProps: r.foundProps,
       })),
+      pages: pages.map((p) => ({ id: p.id, name: p.name })),
     });
   }
 
@@ -670,6 +712,12 @@ figma.ui.onmessage = async (msg) => {
   else if (msg.type === 'save-api-key') {
     figma.clientStorage.setAsync('api_key', msg.key);
   }
+
+  // --- Env Settings ---
+  else if (msg.type === 'save-env-settings') {
+    figma.clientStorage.setAsync('env_host', msg.envHost || '');
+    figma.clientStorage.setAsync('env', msg.env || 'ambiteste');
+  }
 };
 
 // ══════════════════════════════════════════════════════
@@ -679,9 +727,15 @@ figma.ui.onmessage = async (msg) => {
 // Re-extrai dados a cada mudança de seleção
 figma.on('selectionchange', lerTextosDaTela);
 
-// Envia API Key salva para a UI na inicialização
+// Envia API Key e env settings salvos para a UI na inicialização
 figma.clientStorage.getAsync('api_key').then((key) => {
   if (key) figma.ui.postMessage({ type: 'init-api-key', key });
+});
+Promise.all([
+  figma.clientStorage.getAsync('env_host'),
+  figma.clientStorage.getAsync('env'),
+]).then(([envHost, env]) => {
+  figma.ui.postMessage({ type: 'init-env-settings', envHost: envHost || '', env: env || 'ambiteste' });
 });
 
 // Envia estado inicial do NID

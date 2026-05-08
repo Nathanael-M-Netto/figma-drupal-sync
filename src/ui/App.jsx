@@ -9,7 +9,8 @@
  *   - Toasts e loading global
  */
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // Layout & Shared
 import ResizableContainer from './components/layout/ResizableContainer';
@@ -44,15 +45,19 @@ export default function App() {
   const addToast = useAppStore((s) => s.addToast);
   const setLoading = useAppStore((s) => s.setLoading);
 
-  const { 
-    setPageStructure, 
-    pageModules, 
-    deletedModules, 
-    setDeploying, 
-    setResult, 
-    setError, 
-    reset: resetDeploy 
+  const {
+    setPageStructure,
+    pageModules,
+    deletedModules,
+    moduleOverrides,
+    setDeploying,
+    setResult,
+    setError,
+    setDeployProgress,
+    reset: resetDeploy
   } = useDeployStore();
+
+  const [deployModalOpen, setDeployModalOpen] = useState(false);
 
   const figma = useFigmaMessages();
   const templateData = useTemplates(figma.apiKey || token);
@@ -71,10 +76,12 @@ export default function App() {
     }
   }, [isAuthenticated, currentScreen, navigate]);
 
-  // Cliente da API (agora usa a API Key explicitamente salva, com fallback para o token mock JWT)
   const client = useMemo(() => {
-    return createDrupalClient(figma.apiKey || token);
-  }, [token, figma.apiKey]);
+    return createDrupalClient(figma.apiKey || token, {
+      envHost: figma.envHost,
+      env: figma.envName,
+    });
+  }, [token, figma.apiKey, figma.envHost, figma.envName]);
 
   // ★ Auto-Sync: quando o plugin abre e detecta NID, busca dados do Drupal (Fase 7)
   useEffect(() => {
@@ -82,15 +89,23 @@ export default function App() {
 
     (async () => {
       try {
-        const drupalData = await client.syncPage(figma.autoSyncNid);
+        const res = await client.syncPage(figma.autoSyncNid);
+        // /api/nodes/{nid}/sync-payload retorna {status, modules: [{module_name, data}, ...]}
+        const drupalModules = Array.isArray(res?.modules) ? res.modules : [];
 
-        if (!drupalData || Object.keys(drupalData).length === 0) {
+        if (drupalModules.length === 0) {
           figma.setSyncResult('synced', null);
           return;
         }
 
-        // Compara dados do Drupal com dados extraídos do Figma
+        // Compara dados do módulo selecionado no Figma contra o módulo correspondente no Drupal
         const figmaData = figma.extractedData || {};
+        const moduleName = figma.currentModuleName;
+        const matchingModule = moduleName
+          ? drupalModules.find((m) => m.module_name === moduleName)
+          : null;
+        const drupalData = matchingModule?.data || {};
+
         const changed = [];
         const added = [];
 
@@ -114,7 +129,7 @@ export default function App() {
         figma.setSyncResult('error', null);
       }
     })();
-  }, [figma.syncStatus, figma.autoSyncNid, client]);
+  }, [figma.syncStatus, figma.autoSyncNid, figma.currentModuleName, client]);
 
   // ══════════════════════════════════════════════════════
   // HANDLERS HOME / DEPLOY
@@ -195,43 +210,63 @@ export default function App() {
   const startDeployReview = async () => {
     try {
       setLoading(true);
-      // Solicita a leitura completa da página ao plugin Figma
-      figma.readFullPage((msg) => {
-        const figmaModules = msg.modules || [];
-        
-        // Busca o estado atual no Drupal para comparação
-        (async () => {
-          let drupalModules = [];
-          try {
-            const res = await client.syncPage(figma.linkedNid);
-            drupalModules = res.modules || [];
-          } catch (e) {
-            console.warn('Não foi possível carregar dados do Drupal para comparação');
-          }
+      const msg = await figma.readFullPage();
+      const figmaModules = msg.modules || [];
 
-          setPageStructure(figmaModules, drupalModules);
-          setLoading(false);
-          navigate('deployReview');
-        })();
-      });
+      let drupalModules = [];
+      if (figma.linkedNid) {
+        try {
+          const res = await client.syncPage(figma.linkedNid);
+          drupalModules = Array.isArray(res?.modules) ? res.modules : [];
+        } catch (e) {
+          console.warn('[Deploy] Sem dados do Drupal para comparação:', e.message);
+        }
+      }
+
+      setPageStructure(figmaModules, drupalModules);
+      setDeployModalOpen(true);
     } catch (err) {
-      setLoading(false);
       addToast({ type: 'error', message: 'Erro ao ler estrutura da página: ' + err.message });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleConfirmDeploy = async () => {
     setDeploying(true);
+    setDeployProgress(null);
     try {
-      const finalModules = pageModules.filter(m => !deletedModules.has(m.id));
-      const res = await client.deployPage(figma.linkedNid, finalModules);
-      
-      if (res.status === 'success' || res.job_id) {
-        addToast({ type: 'success', message: 'Deploy enviado com sucesso!' });
+      // CRITICAL: include ALL modules (Figma + Drupal-preserved) to prevent canvas wipe.
+      // Apply per-module overrides (non-Figma editable fields) before sending.
+      const finalModules = pageModules
+        .filter((m) => !deletedModules.has(m.id))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map((m) => ({
+          name: m.name,
+          order: m.order,
+          data: { ...m.data, ...(moduleOverrides[m.id] || {}) },
+          source: m.source,
+        }));
+
+      if (finalModules.length === 0) {
+        throw new Error('Nenhum módulo selecionado para deploy.');
+      }
+
+      const res = await client.deployPage(figma.linkedNid, finalModules, {
+        onProgress: (current, total, name) =>
+          setDeployProgress({ current, total, name }),
+      });
+
+      if (res?.status === 'success' || res?.job_id || res?.new_nid || res) {
+        addToast({ type: 'success', message: `Deploy de ${finalModules.length} módulo(s) publicado!` });
+        const nid = res?.new_nid || res?.target_nid;
+        if (nid && String(nid) !== String(figma.linkedNid)) {
+          figma.bindNid(String(nid));
+        }
         resetDeploy();
-        navigate('home');
+        setDeployModalOpen(false);
       } else {
-        throw new Error(res.message || 'Erro desconhecido no deploy');
+        throw new Error(res?.message || 'Erro desconhecido no deploy');
       }
     } catch (err) {
       addToast({ type: 'error', message: 'Falha no deploy: ' + err.message });
@@ -318,6 +353,8 @@ export default function App() {
             <DevSettingsTab
               linkedNid={figma.linkedNid}
               apiKey={figma.apiKey}
+              envHost={figma.envHost}
+              envName={figma.envName}
               currentModuleName={figma.currentModuleName}
               extractedData={figma.extractedData}
               currentMeta={figma.currentMeta}
@@ -325,6 +362,7 @@ export default function App() {
               onForceNid={figma.bindNid}
               onUnlinkNid={figma.clearNid}
               onSaveApiKey={figma.saveApiKey}
+              onSaveEnvSettings={figma.saveEnvSettings}
               onLoadSchema={figma.loadSchema}
               onClearSchema={figma.clearSchema}
               onUpdateProps={figma.updateProps}

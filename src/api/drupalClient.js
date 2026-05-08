@@ -1,42 +1,32 @@
 /**
  * @file drupalClient.js
- * Cliente de API otimizado para comunicação com o CMS Drupal.
+ * Cliente de API para comunicação com o CMS Drupal.
  *
- * REGRA DE OURO (Performance):
- *   - GET (Sync): Uma ÚNICA chamada busca o JSON completo da página por NID
- *   - POST (Deploy): Uma ÚNICA chamada envia a árvore hierárquica inteira
- *   - Evita múltiplas requisições ao máximo
+ * Estratégia de deploy (per API spec):
+ *   - Mode 2 (template_name + data): uma chamada por módulo Figma.
+ *   - Mode 3 (modules array) só processa o primeiro item — não usar para multi-módulo.
+ *   - Módulos com source='drupal' (não tocados pelo designer) são ignorados no deploy
+ *     pois já existem no Drupal e chamadas individuais não os sobrescrevem.
  *
- * Este módulo roda na UI (iframe), pois o sandbox do Figma
- * NÃO pode fazer requisições HTTP.
+ * env_host e env são injetados em todos os payloads PUT/POST que os aceitam.
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io';
-
-// ══════════════════════════════════════════════════════
-// CLIENTE HTTP
-// ══════════════════════════════════════════════════════
+const DEFAULT_ENV = 'ambiteste';
 
 /**
- * Cria uma instância do cliente com a API Key configurada.
+ * Cria uma instância do cliente com autenticação e configurações de ambiente.
  *
- * @param {string} apiKey - Chave de autenticação X-TIM-Key
- * @returns {Object} Cliente com métodos deploy, sync, createPage, fetchSchema
+ * @param {string} apiKey - X-TIM-Key ou Bearer JWT
+ * @param {Object} [envConfig] - { envHost, env }
  */
-export function createDrupalClient(apiKey) {
-  /**
-   * Wrapper de fetch com headers padronizados e tratamento de erros.
-   */
+export function createDrupalClient(apiKey, { envHost = '', env = DEFAULT_ENV } = {}) {
   async function request(endpoint, method = 'GET', body = null) {
     if (!apiKey) {
       throw new Error('API Key não configurada. Vá em Dev Settings para inserir.');
     }
 
-    const headers = {
-      'Content-Type': 'application/json',
-    };
-
-    // Suporte híbrido v2 (API Key) e v3 (JWT)
+    const headers = { 'Content-Type': 'application/json' };
     if (apiKey.startsWith('mock_jwt_') || apiKey.split('.').length === 3) {
       headers['Authorization'] = `Bearer ${apiKey}`;
     } else {
@@ -44,26 +34,18 @@ export function createDrupalClient(apiKey) {
     }
 
     const options = { method, headers };
-    if (body) {
-      options.body = JSON.stringify(body);
-    }
+    if (body) options.body = JSON.stringify(body);
 
     const url = `${API_BASE_URL}${endpoint}`;
-
     try {
       const response = await fetch(url, options);
-
       if (!response.ok) {
         const errorBody = await response.text();
         console.error(`[drupalClient] API ${response.status}:`, errorBody);
-        throw new Error(
-          `Status ${response.status}: ${errorBody || response.statusText}`
-        );
+        throw new Error(`Status ${response.status}: ${errorBody || response.statusText}`);
       }
-
       return await response.json();
     } catch (err) {
-      // Erro de rede (sem conexão, DNS, etc.)
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
         throw new Error('Sem conexão com o servidor. Verifique sua rede.');
       }
@@ -71,134 +53,122 @@ export function createDrupalClient(apiKey) {
     }
   }
 
-  // ══════════════════════════════════════════════════════
-  // ★ CHAMADA ÚNICA — DEPLOY (POST)
-  // ══════════════════════════════════════════════════════
+  // ──────────────────────────────────────────────────────
+  // Helpers internos
+  // ──────────────────────────────────────────────────────
+
+  function withEnv(payload) {
+    if (envHost) payload.env_host = envHost;
+    if (env) payload.env = env;
+    return payload;
+  }
+
+  // ──────────────────────────────────────────────────────
+  // DEPLOY
+  // ──────────────────────────────────────────────────────
 
   /**
-   * Envia a página inteira para o Drupal em UMA ÚNICA chamada.
+   * Deploya TODOS os módulos da página para o Drupal (Figma + Drupal-preserved).
    *
-   * ★ CHAMADA ÚNICA DE API: Em vez de enviar módulo por módulo
-   *   (N requisições), envia toda a árvore hierárquica em um único POST.
+   * CRITICAL: every PUT /canvas replaces the full canvas. Sending a subset wipes
+   * modules not included. Always send all modules (sorted by order) so Drupal-only
+   * modules are preserved and the final canvas is the full merged page.
    *
-   * @param {string} targetNid - NID da página no Drupal
-   * @param {Array<{name: string, order: number, data: Object}>} modules - Árvore de módulos
-   * @returns {Promise<Object>} Resposta da API
+   * @param {string} targetNid
+   * @param {Array<{name, data, order, source}>} modules - ALL page modules, pre-merged
+   * @param {{ onProgress?: Function }} [options]
    */
-  async function deployPage(targetNid, modules, nodeFieldValues = null) {
-    // Phase 4 Target Flow: /variants/preview
-    const payload = {
-      target_nid: targetNid,
-      template_name: modules[0]?.name, // Assume o primeiro como principal para o template_name do preview
-      node_field_values: nodeFieldValues,
-      // Para manter compatibilidade com o middleware enquanto ele evolui
-      modules: modules.map((mod) => ({
-        module_name: mod.name,
-        order: mod.order,
-        data: mod.data,
-      })),
-    };
+  async function deployPage(targetNid, modules, { onProgress } = {}) {
+    const allModules = [...(modules || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-    return request(`/api/nodes/${targetNid}/canvas`, 'PUT', payload);
+    if (allModules.length === 0) {
+      return { status: 'success', message: 'Nenhum módulo para enviar.' };
+    }
+
+    let lastResult = null;
+    for (let i = 0; i < allModules.length; i++) {
+      const mod = allModules[i];
+      const payload = withEnv({
+        template_name: mod.name,
+        data: mod.data || {},
+      });
+      lastResult = await request(`/api/nodes/${targetNid}/canvas`, 'PUT', payload);
+      if (onProgress) onProgress(i + 1, allModules.length, mod.name);
+    }
+
+    return lastResult;
   }
 
   /**
-   * Deploy de um único módulo (fallback de compatibilidade).
-   * Usado quando a API não suporta o payload hierárquico.
-   *
-   * @param {string} targetNid - NID da página
-   * @param {string} moduleName - Nome do módulo
-   * @param {Object} data - Dados do módulo
-   * @returns {Promise<Object>}
+   * Deploy de um único módulo (usado no Dev Settings e home).
    */
   async function deployModule(targetNid, moduleName, data) {
-    const payload = {
+    return request(`/api/nodes/${targetNid}/canvas`, 'PUT', withEnv({
       template_name: moduleName,
-      data,
-    };
-
-    return request(`/api/nodes/${targetNid}/canvas`, 'PUT', payload);
+      data: data || {},
+    }));
   }
 
-  // ══════════════════════════════════════════════════════
-  // ★ CHAMADA ÚNICA — SYNC (GET)
-  // ══════════════════════════════════════════════════════
+  // ──────────────────────────────────────────────────────
+  // SYNC
+  // ──────────────────────────────────────────────────────
 
   /**
-   * Busca o JSON completo da página no Drupal em UMA ÚNICA chamada.
-   *
-   * ★ CHAMADA ÚNICA DE API: Recebe todos os módulos da página
-   *   de uma vez. A UI em React repassa para o backend do Figma,
-   *   que aplica os valores em todos os nós correspondentes.
-   *
-   * @param {string} nid - NID da página
-   * @param {string} [moduleName] - Nome do módulo (opcional, para filtrar)
-   * @returns {Promise<Object>} JSON com dados da página
+   * Busca o payload atual da página no Drupal.
+   * Sem module_name → lista completa: { status, modules: [{module_name, data}] }
+   * Com module_name → módulo único: { status, data }
    */
   async function syncPage(nid, moduleName) {
     let endpoint = `/api/nodes/${nid}/sync-payload`;
-    if (moduleName) {
-      endpoint += `?module_name=${encodeURIComponent(moduleName)}`;
-    }
-
+    if (moduleName) endpoint += `?module_name=${encodeURIComponent(moduleName)}`;
     return request(endpoint, 'GET');
   }
 
-  // ══════════════════════════════════════════════════════
-  // CRIAR PÁGINA NOVA (POST sem NID)
-  // ══════════════════════════════════════════════════════
+  // ──────────────────────────────────────────────────────
+  // CRIAR PÁGINA
+  // ──────────────────────────────────────────────────────
 
-  /**
-   * Cria uma nova página no Drupal a partir dos dados do Figma.
-   * A API gera o NID e retorna na resposta.
-   *
-   * @param {string} moduleName - Nome do módulo
-   * @param {Object} data - Dados extraídos do Figma
-   * @returns {Promise<Object>} Resposta com { new_nid }
-   */
   async function createPage(moduleName, data) {
-    const payload = {
+    return request('/api/pages', 'POST', withEnv({
       target_nid: null,
       module_name: moduleName,
-      data,
-    };
-
-    return request('/api/pages', 'POST', payload);
+      data: data || {},
+    }));
   }
 
-  // ══════════════════════════════════════════════════════
+  // ──────────────────────────────────────────────────────
   // SCHEMA
-  // ══════════════════════════════════════════════════════
+  // ──────────────────────────────────────────────────────
 
-  /**
-   * Busca o schema de um módulo na API.
-   *
-   * @param {string} moduleName - Nome do módulo
-   * @returns {Promise<Object>} Schema do módulo
-   */
   async function fetchSchema(moduleName) {
-    const endpoint = `/api/templates/${encodeURIComponent(moduleName)}`;
-    const res = await request(endpoint, 'GET');
-    // Retorna o objeto template completo ou o figma_component_schema se disponível
+    const res = await request(`/api/templates/${encodeURIComponent(moduleName)}`, 'GET');
     return res.template?.figma_component_schema || res.template || res;
   }
 
-  // ══════════════════════════════════════════════════════
-  // NODE METADATA (Fase 4)
-  // ══════════════════════════════════════════════════════
+  // ──────────────────────────────────────────────────────
+  // NODE INFO
+  // ──────────────────────────────────────────────────────
 
-  /**
-   * Descobre o content type de um NID.
-   */
   async function getNodeContentType(nid) {
     return request(`/api/nodes/${nid}`, 'GET');
   }
 
-  /**
-   * Busca o schema de campos de um content type Drupal.
-   */
   async function getContentTypeSchema(contentType) {
     return request(`/api/content-types/${contentType}`, 'GET');
+  }
+
+  // ──────────────────────────────────────────────────────
+  // JOB POLLING (para deploys async futuros)
+  // ──────────────────────────────────────────────────────
+
+  async function pollJob(jobId, intervalMs = 2000, maxAttempts = 30) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, intervalMs));
+      const result = await request(`/api/jobs/${jobId}`, 'GET');
+      if (result.status === 'done') return result;
+      if (result.status === 'failed') throw new Error(result.error || 'Job falhou no servidor.');
+    }
+    throw new Error('Timeout aguardando conclusão do job.');
   }
 
   return {
@@ -209,5 +179,6 @@ export function createDrupalClient(apiKey) {
     fetchSchema,
     getNodeContentType,
     getContentTypeSchema,
+    pollJob,
   };
 }

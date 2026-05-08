@@ -12,16 +12,18 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default: 'bg-brand-soft text-brand',
+        info:    'bg-brand-soft text-brand',
         success: 'bg-success-soft text-success',
-        danger: 'bg-danger-soft text-danger',
+        danger:  'bg-danger-soft text-danger',
         warning: 'bg-warning-soft text-warning',
-        purple: 'bg-purple-soft text-purple',
-        muted: 'bg-white/6 text-text-tertiary',
+        purple:  'bg-purple-soft text-purple',
+        muted:   'bg-white/[0.06] text-text-tertiary',
       },
       size: {
         default: 'text-[9px] px-1.5 py-0.5 rounded',
-        sm: 'text-[8px] px-1 py-px rounded',
-        lg: 'text-[10px] px-2.5 py-1 rounded-full',
+        xs:      'text-[8px] px-1 py-px rounded',
+        sm:      'text-[8px] px-1 py-px rounded',
+        lg:      'text-[10px] px-2.5 py-1 rounded-full',
       },
     },
     defaultVariants: {

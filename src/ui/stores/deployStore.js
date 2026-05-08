@@ -10,6 +10,7 @@
  */
 
 import { create } from 'zustand';
+import { diffModuleData } from '../../utils/pageDiffer.js';
 
 const useDeployStore = create((set, get) => ({
   // ── Estado ──
@@ -34,7 +35,13 @@ const useDeployStore = create((set, get) => ({
   // Resultado
   result: null,         // { success, nid, message }
   error: null,
-  
+
+  // Progresso do deploy em andamento
+  deployProgress: null, // { current, total, name } | null
+
+  // Overrides de campos não-Figma por módulo (ex: BOOL_CIRCLE_PHOTO em m13)
+  moduleOverrides: {}, // { [moduleId]: { [fieldName]: value } }
+
   // ── Ações ──
 
   /**
@@ -43,23 +50,53 @@ const useDeployStore = create((set, get) => ({
    * @param {Array} drupalModules - Módulos vindo do Sync do Drupal
    */
   setPageStructure: (figmaModules, drupalModules = []) => {
-    const modules = figmaModules.map(fm => {
-      // Tenta encontrar o correspondente no Drupal para marcar como modificado ou não
-      const dm = drupalModules.find(d => d.module_name === fm.name);
-      const isModified = dm ? JSON.stringify(dm.data) !== JSON.stringify(fm.data) : true;
-      
+    // Indexa Drupal por module_name para lookup O(1) e cálculo de removidos
+    const drupalByName = new Map(
+      (drupalModules || []).map((d) => [d.module_name, d])
+    );
+
+    const modules = figmaModules.map((fm, idx) => {
+      const dm = drupalByName.get(fm.name);
+      const diff = dm
+        ? diffModuleData(fm.data, dm.data)
+        : { changed: [], added: Object.keys(fm.data || {}).map((k) => ({ field: k, figmaValue: fm.data[k] })), removed: [], unchanged: [] };
+      const isModified = !!(dm && (diff.changed.length > 0 || diff.removed.length > 0));
+
       return {
-        ...fm,
+        id: fm.nodeId || `${fm.name}-${idx}`,
+        name: fm.name,
+        order: fm.order ?? idx,
+        data: fm.data || {},
+        nodeId: fm.nodeId,
+        pageName: fm.pageName || null,
+        source: 'figma',
         isNew: !dm,
         isModified,
-        isDeleted: false
+        diff,
+        isDeleted: false,
       };
     });
 
-    set({ 
-      pageModules: modules,
+    // Módulos que existem só no Drupal (foram preservados — designer não mexeu)
+    const figmaNames = new Set(figmaModules.map((m) => m.name));
+    const drupalOnly = (drupalModules || [])
+      .filter((d) => !figmaNames.has(d.module_name))
+      .map((d, idx) => ({
+        id: `drupal-${d.module_name}`,
+        name: d.module_name,
+        order: 1000 + idx,
+        data: d.data || {},
+        nodeId: null,
+        source: 'drupal',
+        isNew: false,
+        isModified: false,
+        isDeleted: false,
+      }));
+
+    set({
+      pageModules: [...modules, ...drupalOnly],
       deletedModules: new Set(),
-      drupalData: drupalModules
+      drupalData: drupalModules,
     });
   },
 
@@ -97,6 +134,15 @@ const useDeployStore = create((set, get) => ({
     }));
   },
 
+  setModuleOverride: (moduleId, fieldName, value) => {
+    set((state) => ({
+      moduleOverrides: {
+        ...state.moduleOverrides,
+        [moduleId]: { ...(state.moduleOverrides[moduleId] || {}), [fieldName]: value },
+      },
+    }));
+  },
+
   setContentType: (type, schema) => {
     set({ contentType: type, contentTypeSchema: schema });
   },
@@ -109,12 +155,14 @@ const useDeployStore = create((set, get) => ({
 
   setLoading: (isLoading) => set({ isLoading }),
 
+  setDeployProgress: (progress) => set({ deployProgress: progress }),
+
   reset: () => set({
     mode: null, isLoading: false, isDeploying: false,
     drupalData: null, figmaData: null, diff: null,
     pageModules: [], deletedModules: new Set(),
     contentType: null, contentTypeSchema: null, nodeFields: {},
-    result: null, error: null,
+    result: null, error: null, deployProgress: null, moduleOverrides: {},
   }),
 }));
 
