@@ -22,6 +22,7 @@ export const SCREEN_SIZES = {
   scan:      { width: 460, height: 700 },
   settings:  { width: 460, height: 720 },
   deploy:    { width: 460, height: 750 },
+  deployReview: { width: 460, height: 780 },
   inspect:   { width: 460, height: 680 },
 };
 

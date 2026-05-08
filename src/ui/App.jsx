@@ -26,6 +26,7 @@ import TemplateList from './components/templates/TemplateList';
 import ScanReport from './components/scan/ScanReport';
 import DevSettingsTab from './components/dev/DevSettingsTab';
 import DeployScreen from './components/deploy/DeployScreen';
+import DeployReviewScreen from './components/deploy/DeployReviewScreen';
 import InspectScreen from './components/inspect/InspectScreen';
 
 // Hooks & Stores
@@ -33,6 +34,7 @@ import { useAuth } from './hooks/useAuth';
 import { useFigmaMessages } from './hooks/useFigmaMessages';
 import { useTemplates } from './hooks/useTemplates';
 import useAppStore from './stores/appStore';
+import useDeployStore from './stores/deployStore';
 import { createDrupalClient } from '../api/drupalClient';
 
 export default function App() {
@@ -40,6 +42,17 @@ export default function App() {
   const currentScreen = useAppStore((s) => s.currentScreen);
   const navigate = useAppStore((s) => s.navigate);
   const addToast = useAppStore((s) => s.addToast);
+  const setLoading = useAppStore((s) => s.setLoading);
+
+  const { 
+    setPageStructure, 
+    pageModules, 
+    deletedModules, 
+    setDeploying, 
+    setResult, 
+    setError, 
+    reset: resetDeploy 
+  } = useDeployStore();
 
   const figma = useFigmaMessages();
   const templateData = useTemplates(figma.apiKey || token);
@@ -179,6 +192,55 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const startDeployReview = async () => {
+    try {
+      setLoading(true);
+      // Solicita a leitura completa da página ao plugin Figma
+      figma.readFullPage((msg) => {
+        const figmaModules = msg.modules || [];
+        
+        // Busca o estado atual no Drupal para comparação
+        (async () => {
+          let drupalModules = [];
+          try {
+            const res = await client.syncPage(figma.linkedNid);
+            drupalModules = res.modules || [];
+          } catch (e) {
+            console.warn('Não foi possível carregar dados do Drupal para comparação');
+          }
+
+          setPageStructure(figmaModules, drupalModules);
+          setLoading(false);
+          navigate('deployReview');
+        })();
+      });
+    } catch (err) {
+      setLoading(false);
+      addToast({ type: 'error', message: 'Erro ao ler estrutura da página: ' + err.message });
+    }
+  };
+
+  const handleConfirmDeploy = async () => {
+    setDeploying(true);
+    try {
+      const finalModules = pageModules.filter(m => !deletedModules.has(m.id));
+      const res = await client.deployPage(figma.linkedNid, finalModules);
+      
+      if (res.status === 'success' || res.job_id) {
+        addToast({ type: 'success', message: 'Deploy enviado com sucesso!' });
+        resetDeploy();
+        navigate('home');
+      } else {
+        throw new Error(res.message || 'Erro desconhecido no deploy');
+      }
+    } catch (err) {
+      addToast({ type: 'error', message: 'Falha no deploy: ' + err.message });
+      setError(err.message);
+    } finally {
+      setDeploying(false);
+    }
+  };
+
   // ══════════════════════════════════════════════════════
   // RENDERIZAÇÃO DE TELAS
   // ══════════════════════════════════════════════════════
@@ -196,7 +258,7 @@ export default function App() {
             currentModuleName={figma.currentModuleName}
             extractedData={figma.extractedData}
             currentMeta={figma.currentMeta}
-            onDeploy={handleDeploy}
+            onDeploy={startDeployReview}
             onSync={handleSync}
             onDownload={handleDownload}
             syncStatus={figma.syncStatus}
@@ -246,6 +308,9 @@ export default function App() {
             templates={templateData.filteredTemplates}
           />
         );
+
+      case 'deployReview':
+        return <DeployReviewScreen onConfirm={handleConfirmDeploy} />;
 
       case 'settings':
         if (isDevRole) {

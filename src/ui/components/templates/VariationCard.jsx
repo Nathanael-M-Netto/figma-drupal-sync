@@ -111,10 +111,21 @@ export default function VariationCard({ variation, onDownloadSchema }) {
               </div>
             </div>
 
-            {/* Placeholder Preview */}
-            <div className="flex items-center justify-center gap-2 py-6 mb-4 border border-dashed border-border rounded-[var(--radius-sm)] text-[11px] text-text-tertiary bg-black/10">
-              <ImageIcon className="w-5 h-5 opacity-50" />
-              <span>Preview visual (em breve)</span>
+            {/* Preview Visual Real da API */}
+            <div className="relative aspect-video mb-4 border border-border rounded-[var(--radius-sm)] overflow-hidden bg-black/20 group/img">
+              <img 
+                src={`https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io/api/screenshots/${variation.name}`}
+                alt={variation.name}
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'flex';
+                }}
+              />
+              <div className="hidden absolute inset-0 items-center justify-center gap-2 text-[10px] text-text-tertiary">
+                <ImageIcon className="w-5 h-5 opacity-30" />
+                <span>Sem preview disponível</span>
+              </div>
             </div>
 
             <FieldList fields={variation.fields} />

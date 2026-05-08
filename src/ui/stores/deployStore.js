@@ -18,9 +18,13 @@ const useDeployStore = create((set, get) => ({
   isDeploying: false,
   
   // Dados
-  drupalData: null,     // Dados atuais do Drupal (GET /figma/pull/{nid})
+  drupalData: null,     // Dados atuais do Drupal (GET /api/nodes/{nid}/sync-payload)
   figmaData: null,      // Dados extraídos do Figma
   diff: null,           // { changed: [], added: [], removed: [], unchanged: [] }
+  
+  // Page Structure (Fase 8)
+  pageModules: [],      // Lista de módulos na página Figma [{id, name, data, order, isNew, isModified, isDeleted}]
+  deletedModules: new Set(), // IDs de módulos que o usuário marcou para deletar
   
   // Content-type fields
   contentType: null,    // Ex: 'page', 'landing_page'
@@ -30,51 +34,55 @@ const useDeployStore = create((set, get) => ({
   // Resultado
   result: null,         // { success, nid, message }
   error: null,
-
+  
   // ── Ações ──
 
   /**
+   * Inicializa a estrutura da página para revisão.
+   * @param {Array} figmaModules - Módulos lidos do Figma
+   * @param {Array} drupalModules - Módulos vindo do Sync do Drupal
+   */
+  setPageStructure: (figmaModules, drupalModules = []) => {
+    const modules = figmaModules.map(fm => {
+      // Tenta encontrar o correspondente no Drupal para marcar como modificado ou não
+      const dm = drupalModules.find(d => d.module_name === fm.name);
+      const isModified = dm ? JSON.stringify(dm.data) !== JSON.stringify(fm.data) : true;
+      
+      return {
+        ...fm,
+        isNew: !dm,
+        isModified,
+        isDeleted: false
+      };
+    });
+
+    set({ 
+      pageModules: modules,
+      deletedModules: new Set(),
+      drupalData: drupalModules
+    });
+  },
+
+  toggleModuleDelete: (moduleId) => {
+    set((state) => {
+      const nextDeleted = new Set(state.deletedModules);
+      if (nextDeleted.has(moduleId)) {
+        nextDeleted.delete(moduleId);
+      } else {
+        nextDeleted.add(moduleId);
+      }
+      return { deletedModules: nextDeleted };
+    });
+  },
+
+  /**
    * Prepara o deploy analisando os dados.
-   * @param {'update'|'newPage'} mode
-   * @param {Object} figmaData - Dados extraídos do Figma
-   * @param {Object|null} drupalData - Dados atuais do Drupal (null para newPage)
-   * @param {Object|null} contentTypeSchema - Schema dos campos
    */
   prepareDeploy: (mode, figmaData, drupalData = null, contentTypeSchema = null) => {
-    let diff = null;
-
-    if (mode === 'update' && drupalData) {
-      const changed = [];
-      const added = [];
-      const removed = [];
-      const unchanged = [];
-
-      // Figma → Drupal comparison
-      for (const [key, figmaValue] of Object.entries(figmaData)) {
-        if (!(key in drupalData)) {
-          added.push({ field: key, newValue: figmaValue });
-        } else if (String(drupalData[key]) !== String(figmaValue)) {
-          changed.push({ field: key, oldValue: drupalData[key], newValue: figmaValue });
-        } else {
-          unchanged.push({ field: key, value: figmaValue });
-        }
-      }
-      
-      // Drupal fields not in Figma
-      for (const [key, drupalValue] of Object.entries(drupalData)) {
-        if (!(key in figmaData)) {
-          removed.push({ field: key, oldValue: drupalValue });
-        }
-      }
-
-      diff = { changed, added, removed, unchanged, totalChanges: changed.length + added.length };
-    }
-
     set({
       mode,
       figmaData,
       drupalData,
-      diff,
       contentTypeSchema,
       isLoading: false,
       error: null,
@@ -104,6 +112,7 @@ const useDeployStore = create((set, get) => ({
   reset: () => set({
     mode: null, isLoading: false, isDeploying: false,
     drupalData: null, figmaData: null, diff: null,
+    pageModules: [], deletedModules: new Set(),
     contentType: null, contentTypeSchema: null, nodeFields: {},
     result: null, error: null,
   }),

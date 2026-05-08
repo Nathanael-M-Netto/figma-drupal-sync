@@ -92,7 +92,8 @@ export async function fetchTemplateByName(templateName, apiKey) {
       throw new Error(`API retornou status ${response.status}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    return data.template || data;
   } catch (err) {
     console.error('[templateClient] Erro ao buscar template:', err.message);
     throw err;
@@ -107,8 +108,8 @@ export async function fetchTemplateByName(templateName, apiKey) {
  * @returns {Array} Formato normalizado: [{ module, variations: [...] }]
  */
 function normalizeTemplateResponse(rawData) {
-  // Se vier no formato { variants: [...] }, extrai o array
-  const list = rawData.variants || (Array.isArray(rawData) ? rawData : [rawData]);
+  // Suporte a v2 (templates) e v1 (variants)
+  const list = rawData.templates || rawData.variants || (Array.isArray(rawData) ? rawData : [rawData]);
 
   // Se já vier como array de objetos com .module e .variations, retorna direto
   if (Array.isArray(list) && list[0]?.module && list[0]?.variations) {
@@ -119,23 +120,26 @@ function normalizeTemplateResponse(rawData) {
   const moduleMap = new Map();
 
   for (const item of list) {
-    // Extrai nome do módulo a partir do nome da variante ou component_id
-    const variantName = item.name || item.module_name || item.template_name || '';
-    const moduleName = extractModuleName(variantName);
+    // Na v2, temos component_title (ex: "Conjunto CTA") que é a família ideal.
+    // template_name é o ID único da variação. v01, v02 etc costumam vir no variant_id ou no final do nome.
+    const variantName = item.variant_id || item.template_name || item.name || item.componentName || 'Variação sem nome';
+    
+    // Tenta: component_title -> extractModuleName(variantName) -> "Outros"
+    const groupName = item.component_title || extractModuleName(variantName || item.module_name || '');
 
-    if (!moduleMap.has(moduleName)) {
-      moduleMap.set(moduleName, {
-        module: moduleName,
+    if (!moduleMap.has(groupName)) {
+      moduleMap.set(groupName, {
+        module: groupName,
         variations: [],
       });
     }
 
-    moduleMap.get(moduleName).variations.push({
+    moduleMap.get(groupName).variations.push({
       name: variantName,
       component_id: item.component_id || '',
       nid_origem: item.nid_origem || null,
       fields: (() => {
-        // Se figma_properties for um objeto (formato API), converte para array
+        // 1. Suporte a figma_properties (objeto chave-valor v2)
         if (item.figma_properties && typeof item.figma_properties === 'object' && !Array.isArray(item.figma_properties)) {
           return Object.entries(item.figma_properties).map(([name, props]) => ({
             name,
@@ -144,8 +148,12 @@ function normalizeTemplateResponse(rawData) {
             ...props
           }));
         }
-        // Fallback para fields se já for array ou vazio
-        return item.fields || Array.isArray(item.figma_properties) ? item.figma_properties : [];
+        // 2. Suporte a figma_component_schema (array v2)
+        if (item.figma_component_schema?.properties) {
+          return item.figma_component_schema.properties;
+        }
+        // 3. Fallback para v1 ou campos já normalizados
+        return item.fields || (Array.isArray(item.figma_properties) ? item.figma_properties : []);
       })(),
       figma_component_schema: item.figma_component_schema || null,
       drupal_skeleton: item.drupal_skeleton || null,
@@ -153,7 +161,10 @@ function normalizeTemplateResponse(rawData) {
     });
   }
 
-  return Array.from(moduleMap.values());
+  // Converte para array e ordena alfabeticamente pelo nome do módulo/família
+  return Array.from(moduleMap.values()).sort((a, b) => 
+    a.module.localeCompare(b.module, undefined, { numeric: true, sensitivity: 'base' })
+  );
 }
 
 /**
@@ -161,11 +172,12 @@ function normalizeTemplateResponse(rawData) {
  * Ex: "m01_hero_destaque_full_image_v04" → "m01_hero"
  */
 function extractModuleName(variantName) {
+  if (!variantName) return 'Outros';
   const normalized = variantName.toLowerCase().trim();
-  // Tenta capturar o padrão mXX_nome
-  const match = normalized.match(/^(m\d+_[a-z]+)/);
+  // Tenta capturar o padrão mXX_nome (ex: m01_hero) ignorando sufixos como _v04 ou _padrao
+  const match = normalized.match(/^(m\d+_[a-z0-9]+(_[a-z0-9]+)?)/);
   if (match) return match[1];
-  // Fallback: usa os primeiros 2 segmentos
-  const parts = normalized.split('_');
-  return parts.slice(0, 2).join('_') || 'unknown';
+  
+  // Fallback: remove sufixos de versão comuns
+  return normalized.replace(/(_v\d+|_padrao|_desk|_mobile|_mob)$/g, '') || 'Outros';
 }

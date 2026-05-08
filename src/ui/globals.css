@@ -88,7 +88,7 @@ body {
   to { transform: rotate(360deg); }
 }
 
-@keyframes spin {
+@keyframes btn-spin {
   to { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
@@ -144,7 +144,7 @@ body {
   border: 2px solid rgba(255,255,255,0.3);
   border-top-color: #fff;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: btn-spin 0.8s linear infinite;
   display: block;
 }
 

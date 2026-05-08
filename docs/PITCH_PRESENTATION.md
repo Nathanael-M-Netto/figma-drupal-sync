@@ -20,7 +20,7 @@ Designer cria no Figma → Entrega assets → Desenvolvedor monta no Drupal/Cohe
 | Sem fonte única de verdade | Figma diz uma coisa, Drupal diz outra — **quem está certo?** |
 
 > **Nossa proposta:** eliminar esse gap inteiro com um **Plugin de Figma profissional** que transforma o próprio design em uma fonte de verdade operacional, capaz de ler, mapear e deployar conteúdo diretamente no Drupal.
-
+n
 ---
 
 ## A Solução: Um Plugin Inteligente com 4 Etapas
