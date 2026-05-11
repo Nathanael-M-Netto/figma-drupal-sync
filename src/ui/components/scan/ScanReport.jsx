@@ -118,10 +118,6 @@ export default function ScanReport() {
               <span className="text-sm font-bold">{report.warnings.length}</span>
               <span className="text-[9px] uppercase font-bold tracking-[0.5px]">Atenção</span>
             </div>
-            <div className="flex-1 flex flex-col items-center justify-center p-2 text-danger border-l border-border">
-              <span className="text-sm font-bold">{report.unknown.length}</span>
-              <span className="text-[9px] uppercase font-bold tracking-[0.5px]">Desconhecido</span>
-            </div>
           </div>
 
           {/* Lista de módulos */}
@@ -130,9 +126,6 @@ export default function ScanReport() {
               <ModuleStatusItem key={mod.name} module={mod} />
             ))}
             {report.warnings.map((mod) => (
-              <ModuleStatusItem key={mod.name} module={mod} />
-            ))}
-            {report.unknown.map((mod) => (
               <ModuleStatusItem key={mod.name} module={mod} />
             ))}
           </div>

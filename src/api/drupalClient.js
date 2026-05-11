@@ -11,7 +11,7 @@
  * env_host e env são injetados em todos os payloads PUT/POST que os aceitam.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.example.com';
 const DEFAULT_ENV = 'ambiteste';
 
 /**
@@ -30,7 +30,7 @@ export function createDrupalClient(apiKey, { envHost = '', env = DEFAULT_ENV } =
     if (apiKey.startsWith('mock_jwt_') || apiKey.split('.').length === 3) {
       headers['Authorization'] = `Bearer ${apiKey}`;
     } else {
-      headers['X-TIM-Key'] = apiKey;
+      headers['X-CMS-Key'] = apiKey;
     }
 
     const options = { method, headers };

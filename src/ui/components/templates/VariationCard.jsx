@@ -150,7 +150,7 @@ export default function VariationCard({ variation, onDownloadSchema }) {
                 {previewMode}
               </div>
               <img
-                src={`https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io/api/screenshots/${variation.name}`}
+                src={`https://api.example.com/api/screenshots/${variation.name}`}
                 alt={variation.name}
                 className={`w-full h-full ${previewMode === 'mobile' ? 'object-cover object-top' : 'object-contain'}`}
                 onError={(e) => {

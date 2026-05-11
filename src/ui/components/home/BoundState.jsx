@@ -6,7 +6,7 @@
  * preview de dados, botões de Deploy, Sync, Templates, Download.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import NidBadge from '../shared/NidBadge';
 import PropertyList from '../shared/PropertyList';
@@ -14,13 +14,14 @@ import useAppStore from '../../stores/appStore';
 import useAuthStore from '../../stores/authStore';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Loader2, CheckCircle2, AlertTriangle, XCircle, Send, RefreshCw, ScanLine, Layers, Download, Info } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertTriangle, XCircle, Send, RefreshCw, ScanLine, Layers, Download, Info, ChevronDown } from 'lucide-react';
 
 export default function BoundState({
   linkedNid,
   currentModuleName,
   extractedData,
   currentMeta,
+  selectedModules = [],
   onDeploy,
   onSync,
   onDownload,
@@ -31,6 +32,9 @@ export default function BoundState({
   const navigate = useAppStore((s) => s.navigate);
   const isDevRole = useAuthStore((s) => s.user?.role === 'dev');
   const hasModule = !!currentModuleName;
+  const [expandedModuleIndex, setExpandedModuleIndex] = useState(0);
+
+  const hasMultiple = selectedModules.length > 1;
 
   return (
     <motion.div
@@ -123,21 +127,51 @@ export default function BoundState({
       </AnimatePresence>
 
       {/* Módulo selecionado */}
-      {hasModule && (
-        <div className="flex items-center gap-2 bg-bg border border-border rounded-[var(--radius-sm)] py-2 px-3 mb-3.5">
-          <span className="text-[10px] font-semibold text-text-tertiary tracking-[0.5px]">MÓDULO</span>
-          <input 
-            type="text" 
-            value={currentModuleName} 
-            readOnly 
-            className="flex-1 bg-transparent border-none text-text-primary text-xs font-semibold outline-none"
-          />
+      {hasModule && !hasMultiple && (
+        <div className="flex flex-col gap-2 mb-3.5">
+          <div className="flex items-center gap-2 bg-bg border border-border rounded-[var(--radius-sm)] py-2 px-3">
+            <span className="text-[10px] font-semibold text-text-tertiary tracking-[0.5px]">MÓDULO</span>
+            <input 
+              type="text" 
+              value={currentModuleName} 
+              readOnly 
+              className="flex-1 bg-transparent border-none text-text-primary text-xs font-semibold outline-none"
+            />
+          </div>
+          <PropertyList data={extractedData} meta={currentMeta} />
         </div>
       )}
 
-      {/* Preview de dados extraídos */}
-      {hasModule && (
-        <PropertyList data={extractedData} meta={currentMeta} />
+      {/* Múltiplos módulos selecionados */}
+      {hasMultiple && (
+        <div className="flex flex-col gap-2 mb-3.5 max-h-[300px] overflow-y-auto pr-1">
+          {selectedModules.map((mod, index) => {
+            const isExpanded = expandedModuleIndex === index;
+            return (
+              <div key={index} className="flex flex-col border border-border rounded-[var(--radius-sm)] bg-bg overflow-hidden">
+                <button
+                  className="flex items-center justify-between p-3 bg-transparent border-none cursor-pointer outline-none hover:bg-black/5 transition-colors"
+                  onClick={() => setExpandedModuleIndex(isExpanded ? -1 : index)}
+                >
+                  <span className="text-xs font-bold text-text-primary">{mod.name}</span>
+                  <ChevronDown className={`w-4 h-4 text-text-tertiary transition-transform ${isExpanded ? 'rotate-180 text-brand' : ''}`} />
+                </button>
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="px-3 pb-3"
+                    >
+                      <PropertyList data={mod.data} meta={mod.meta} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {!hasModule && (

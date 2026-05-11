@@ -293,6 +293,7 @@ export default function App() {
             currentModuleName={figma.currentModuleName}
             extractedData={figma.extractedData}
             currentMeta={figma.currentMeta}
+            selectedModules={figma.selectedModules}
             onDeploy={startDeployReview}
             onSync={handleSync}
             onDownload={handleDownload}

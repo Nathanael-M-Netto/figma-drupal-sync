@@ -60,25 +60,63 @@ export function useScan() {
    * @param {Array} figmaModules - Módulos encontrados no Figma
    */
   const processModules = useCallback((figmaModules) => {
-    setModules(figmaModules);
+    // Filtrar os módulos e propriedades com base no catálogo de templates
+    const validModules = [];
+
+    for (const mod of figmaModules) {
+      const moduleName = mod.name.toLowerCase().trim();
+      let bestMatch = null;
+
+      // Busca o template correspondente
+      for (const t of templates) {
+        for (const v of t.variations) {
+          const vName = v.name.toLowerCase().trim();
+          const compId = (v.component_id || '').toLowerCase().trim();
+          if (vName === moduleName || compId === moduleName) {
+            bestMatch = v;
+            break;
+          }
+        }
+        if (bestMatch) break;
+      }
+
+      // Ignora módulos que não estão no catálogo
+      if (!bestMatch) continue;
+
+      // Filtra as propriedades (camadas) do módulo para manter apenas as conhecidas
+      const expectedFields = new Set((bestMatch.fields || []).map(f => f.name.toUpperCase()));
+      const filteredData = {};
+      for (const [key, value] of Object.entries(mod.data || {})) {
+        if (expectedFields.has(key.toUpperCase())) {
+          filteredData[key] = value;
+        }
+      }
+
+      validModules.push({
+        ...mod,
+        data: filteredData,
+      });
+    }
+
+    setModules(validModules);
 
     // Validação profunda usando o catálogo de templates
-    const scanReport = generateScanReport(figmaModules, templates);
+    const scanReport = generateScanReport(validModules, templates);
     setReport(scanReport);
 
     // Gera preview do JSON para deploy
-    const deployPayload = figmaModules.map((mod) => ({
+    const deployPayload = validModules.map((mod) => ({
       module_name: mod.name,
       order: mod.order,
       data: mod.data || {},
     }));
     setJsonPreview(deployPayload);
 
-    const total = figmaModules.length;
+    const total = validModules.length;
     const okCount = scanReport.recognized.length;
     addToast({
-      type: okCount === total ? 'success' : 'warning',
-      message: `Scan concluído: ${okCount}/${total} módulos reconhecidos.`,
+      type: okCount > 0 ? 'success' : 'warning',
+      message: `Scan concluído: ${okCount} módulos válidos encontrados.`,
     });
   }, [templates, setModules, setReport, setJsonPreview, addToast]);
 

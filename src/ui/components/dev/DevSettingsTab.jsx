@@ -103,7 +103,7 @@ export default function DevSettingsTab({
           </div>
           
           <div className="mt-4 pt-4 border-t border-border">
-            <label className="block text-[10px] font-bold text-text-secondary mb-1.5 uppercase tracking-[0.5px]">API Key (X-TIM-Key)</label>
+            <label className="block text-[10px] font-bold text-text-secondary mb-1.5 uppercase tracking-[0.5px]">API Key (X-CMS-Key)</label>
             <div className="relative">
               <Input
                 type={showApiKey ? 'text' : 'password'}

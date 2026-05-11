@@ -8,8 +8,9 @@
  *   - Estado reativo (NID, dados extraídos, schema, API key)
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import useAuthStore from '../stores/authStore';
+import { create } from 'zustand';
 
 /**
  * Envia uma mensagem para o sandbox do Figma.
@@ -19,196 +20,135 @@ export function postToFigma(msg) {
   parent.postMessage({ pluginMessage: msg }, '*');
 }
 
+// Store global para os estados do figma
+export const useFigmaStore = create((set) => ({
+  linkedNid: null,
+  extractedData: {},
+  currentMeta: null,
+  currentModuleName: '',
+  selectedModules: [],
+  schemaStatus: { loaded: false, name: '', propCount: 0 },
+  status: { text: '', type: '', visible: false },
+  pageModules: [],
+  syncStatus: 'idle', // 'idle' | 'checking' | 'synced' | 'outdated' | 'error'
+  syncDiff: null,
+  autoSyncNid: null,
+  envHost: '',
+  envName: 'ambiteste',
+
+  setLinkedNid: (linkedNid) => set({ linkedNid }),
+  setExtractedData: (extractedData) => set({ extractedData }),
+  setCurrentMeta: (currentMeta) => set({ currentMeta }),
+  setCurrentModuleName: (currentModuleName) => set({ currentModuleName }),
+  setSelectedModules: (selectedModules) => set({ selectedModules }),
+  setSchemaStatus: (schemaStatus) => set({ schemaStatus }),
+  setStatus: (status) => set({ status }),
+  setPageModules: (pageModules) => set({ pageModules }),
+  setSyncStatus: (syncStatus) => set({ syncStatus }),
+  setSyncDiff: (syncDiff) => set({ syncDiff }),
+  setAutoSyncNid: (autoSyncNid) => set({ autoSyncNid }),
+  setEnvHost: (envHost) => set({ envHost }),
+  setEnvName: (envName) => set({ envName }),
+  setSyncResult: (syncStatus, syncDiff = null) => set({ syncStatus, syncDiff }),
+}));
+
+const callbacksRef = { current: {} };
+let isFigmaListenerAdded = false;
+
+function handleFigmaMessage(event) {
+  try {
+    const msg = event.data?.pluginMessage;
+    if (!msg) return;
+
+    if (callbacksRef.current[msg.type]) {
+      callbacksRef.current[msg.type](msg);
+      delete callbacksRef.current[msg.type];
+    }
+
+    const set = useFigmaStore.setState;
+
+    if (msg.type === 'nid-state' || msg.type === 'nid-saved') {
+      set({ linkedNid: msg.nid || null });
+    } else if (msg.type === 'nid-cleared') {
+      set({ linkedNid: null });
+    } else if (msg.type === 'init-api-key') {
+      useAuthStore.getState().setApiKey(msg.key);
+    } else if (msg.type === 'schema-status') {
+      if (msg.status === 'success') {
+        set({ schemaStatus: { loaded: true, name: msg.schemaName, propCount: msg.propCount } });
+      } else if (msg.status === 'cleared') {
+        set({ schemaStatus: { loaded: false, name: '', propCount: 0 } });
+      }
+    } else if (msg.status === 'success') {
+      set({
+        currentModuleName: msg.moduleName || '',
+        extractedData: msg.data || {},
+        currentMeta: msg.meta || null,
+        selectedModules: msg.selectedModules || []
+      });
+    } else if (msg.status === 'error') {
+      set({ status: { text: msg.message || 'Erro na extração', type: 'error', visible: true } });
+    } else if (msg.type === 'update-done') {
+      set({ status: { text: `${msg.moduleName}: ${msg.addedCount} props adicionadas`, type: 'success', visible: true } });
+    } else if (msg.type === 'sync-done') {
+      set({ status: { text: `Sync concluído! ${msg.updatedCount} campos atualizados.`, type: 'success', visible: true } });
+    } else if (msg.type === 'page-modules') {
+      set({ pageModules: msg.modules || [] });
+    } else if (msg.type === 'auto-sync-check') {
+      set({ autoSyncNid: msg.nid, syncStatus: 'checking' });
+    } else if (msg.type === 'init-env-settings') {
+      if (msg.envHost !== undefined) set({ envHost: msg.envHost });
+      if (msg.env !== undefined) set({ envName: msg.env || 'ambiteste' });
+    }
+  } catch (err) {
+    console.error('[useFigmaMessages] error:', err);
+  }
+}
+
 /**
  * Hook que gerencia toda a comunicação com o Figma.
  *
  * @returns {Object} Estado e funções de comunicação
  */
 export function useFigmaMessages() {
-  // --- Estado ---
-  const [linkedNid, setLinkedNid] = useState(null);
+  const store = useFigmaStore();
   const apiKey = useAuthStore((s) => s.apiKey);
   const setStoreApiKey = useAuthStore((s) => s.setApiKey);
-  const [extractedData, setExtractedData] = useState({});
-  const [currentMeta, setCurrentMeta] = useState(null);
-  const [currentModuleName, setCurrentModuleName] = useState('');
-  const [schemaStatus, setSchemaStatus] = useState({ loaded: false, name: '', propCount: 0 });
-  const [status, setStatus] = useState({ text: '', type: '', visible: false });
-  const [pageModules, setPageModules] = useState([]);
 
-  // ★ Auto-Sync State (Fase 7)
-  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'checking' | 'synced' | 'outdated' | 'error'
-  const [syncDiff, setSyncDiff] = useState(null); // { changed: [], added: [], removed: [], totalChanges: 0 }
-  const [autoSyncNid, setAutoSyncNid] = useState(null);
+  useEffect(() => {
+    if (!isFigmaListenerAdded) {
+      window.addEventListener('message', handleFigmaMessage);
+      isFigmaListenerAdded = true;
+    }
+  }, []);
 
-  // Env settings (env_host + env para os payloads da API)
-  const [envHost, setEnvHostState] = useState('');
-  const [envName, setEnvNameState] = useState('ambiteste');
+  // Solicita NID inicial ao montar.
+  useEffect(() => {
+    if (!window.__figma_init_requested) {
+      window.__figma_init_requested = true;
+      postToFigma({ type: 'get-nid' });
+    }
+  }, []);
 
-  // Ref para callbacks que dependem de estado atualizado
-  const callbacksRef = useRef({});
-
-  /**
-   * Registra um callback one-shot para um tipo de mensagem.
-   * Usado pela UI para esperar respostas do sandbox (ex: sync-done).
-   */
   const onceMessage = useCallback((type, callback) => {
     callbacksRef.current[type] = callback;
   }, []);
 
-  // --- Message Listener ---
-  useEffect(() => {
-    function handleMessage(event) {
-      try {
-        const msg = event.data?.pluginMessage;
-        if (!msg) return;
-
-        // Dispara callbacks one-shot
-        if (callbacksRef.current[msg.type]) {
-          callbacksRef.current[msg.type](msg);
-          delete callbacksRef.current[msg.type];
-        }
-
-        // --- NID ---
-        if (msg.type === 'nid-state' || msg.type === 'nid-saved') {
-          setLinkedNid(msg.nid || null);
-        } else if (msg.type === 'nid-cleared') {
-          setLinkedNid(null);
-        }
-
-        // --- API Key ---
-        else if (msg.type === 'init-api-key') {
-          setStoreApiKey(msg.key);
-        }
-
-        // --- Schema ---
-        else if (msg.type === 'schema-status') {
-          if (msg.status === 'success') {
-            setSchemaStatus({
-              loaded: true,
-              name: msg.schemaName,
-              propCount: msg.propCount,
-            });
-          } else if (msg.status === 'cleared') {
-            setSchemaStatus({ loaded: false, name: '', propCount: 0 });
-          }
-        }
-
-        // --- Extração de dados ---
-        else if (msg.status === 'success') {
-          setCurrentModuleName(msg.moduleName || '');
-          setExtractedData(msg.data || {});
-          setCurrentMeta(msg.meta || null);
-        } else if (msg.status === 'error') {
-          setStatus({
-            text: msg.message || 'Erro na extração',
-            type: 'error',
-            visible: true,
-          });
-        }
-
-        // --- Update props ---
-        else if (msg.type === 'update-done') {
-          setStatus({
-            text: `${msg.moduleName}: ${msg.addedCount} props adicionadas`,
-            type: 'success',
-            visible: true,
-          });
-        }
-
-        // --- Sync done ---
-        else if (msg.type === 'sync-done') {
-          setStatus({
-            text: `Sync concluído! ${msg.updatedCount} campos atualizados.`,
-            type: 'success',
-            visible: true,
-          });
-        }
-
-        // --- Page modules ---
-        else if (msg.type === 'page-modules') {
-          setPageModules(msg.modules || []);
-        }
-
-        // --- Auto-Sync Check (Fase 7) ---
-        else if (msg.type === 'auto-sync-check') {
-          setAutoSyncNid(msg.nid);
-          setSyncStatus('checking');
-        }
-
-        // --- Env Settings ---
-        else if (msg.type === 'init-env-settings') {
-          if (msg.envHost !== undefined) setEnvHostState(msg.envHost);
-          if (msg.env !== undefined) setEnvNameState(msg.env || 'ambiteste');
-        }
-
-        // --- do-sync-fetch (sandbox pede à UI para fazer o fetch) ---
-        // Este evento é tratado diretamente no App.jsx pois precisa
-        // chamar o drupalClient
-        // (delegado via onceMessage ou callback externo)
-
-      } catch (err) {
-        console.error('[useFigmaMessages] error:', err);
-      }
-    }
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
-  // Solicita NID inicial ao montar
-  useEffect(() => {
-    postToFigma({ type: 'get-nid' });
-  }, []);
-
-  // --- Ações ---
-  const bindNid = useCallback((nid) => {
-    postToFigma({ type: 'set-nid', nid });
-  }, []);
-
-  const clearNid = useCallback(() => {
-    postToFigma({ type: 'clear-nid' });
-  }, []);
-
-  const loadSchema = useCallback((schema) => {
-    postToFigma({ type: 'load-schema', data: schema });
-  }, []);
-
-  const clearSchema = useCallback(() => {
-    postToFigma({ type: 'clear-schema' });
-  }, []);
-
-  const updateProps = useCallback(() => {
-    postToFigma({ type: 'update-props' });
-  }, []);
-
-  const requestSync = useCallback((nid) => {
-    postToFigma({ type: 'run-sync-api', nid });
-  }, []);
-
-  const applySyncData = useCallback((data) => {
-    postToFigma({ type: 'apply-sync-data', data });
-  }, []);
-
-  const applySyncManual = useCallback((data) => {
-    postToFigma({ type: 'run-sync-manual', data });
-  }, []);
-
-  const syncPropsLocal = useCallback(() => {
-    postToFigma({ type: 'sync-props-local' });
-  }, []);
-
+  const bindNid = useCallback((nid) => postToFigma({ type: 'set-nid', nid }), []);
+  const clearNid = useCallback(() => postToFigma({ type: 'clear-nid' }), []);
+  const loadSchema = useCallback((schema) => postToFigma({ type: 'load-schema', data: schema }), []);
+  const clearSchema = useCallback(() => postToFigma({ type: 'clear-schema' }), []);
+  const updateProps = useCallback(() => postToFigma({ type: 'update-props' }), []);
+  const requestSync = useCallback((nid) => postToFigma({ type: 'run-sync-api', nid }), []);
+  const applySyncData = useCallback((data) => postToFigma({ type: 'apply-sync-data', data }), []);
+  const applySyncManual = useCallback((data) => postToFigma({ type: 'run-sync-manual', data }), []);
+  const syncPropsLocal = useCallback(() => postToFigma({ type: 'sync-props-local' }), []);
+  
   const saveApiKey = useCallback((key) => {
     setStoreApiKey(key);
     postToFigma({ type: 'save-api-key', key });
   }, [setStoreApiKey]);
 
-  /**
-   * Lê a página inteira do Figma e retorna a árvore de módulos.
-   * Pode ser usado de duas formas:
-   *   1. await figma.readFullPage()  → resolve com a mensagem completa
-   *   2. figma.readFullPage(callback) → invoca callback ao receber resposta
-   */
   const readFullPage = useCallback((callback) => {
     return new Promise((resolve) => {
       callbacksRef.current['page-modules'] = (msg) => {
@@ -219,53 +159,25 @@ export function useFigmaMessages() {
     });
   }, []);
 
-  const showStatus = useCallback((text, type) => {
-    setStatus({ text, type, visible: true });
-  }, []);
+  const showStatus = useCallback((text, type) => useFigmaStore.setState({ status: { text, type, visible: true } }), []);
+  const hideStatus = useCallback(() => useFigmaStore.setState((s) => ({ status: { ...s.status, visible: false } })), []);
 
-  const hideStatus = useCallback(() => {
-    setStatus((s) => ({ ...s, visible: false }));
-  }, []);
-
-  /**
-   * Constrói os dados limpos para envio (remove nulls).
-   */
   const buildCleanData = useCallback(() => {
     const clean = {};
-    Object.entries(extractedData).forEach(([k, v]) => {
+    Object.entries(store.extractedData).forEach(([k, v]) => {
       if (v !== null) clean[k] = v;
     });
     return clean;
-  }, [extractedData]);
-
-  const setSyncResult = useCallback((newStatus, diff = null) => {
-    setSyncStatus(newStatus);
-    setSyncDiff(diff);
-  }, []);
+  }, [store.extractedData]);
 
   const saveEnvSettings = useCallback((newEnvHost, newEnv) => {
-    setEnvHostState(newEnvHost || '');
-    setEnvNameState(newEnv || 'ambiteste');
+    useFigmaStore.setState({ envHost: newEnvHost || '', envName: newEnv || 'ambiteste' });
     postToFigma({ type: 'save-env-settings', envHost: newEnvHost || '', env: newEnv || 'ambiteste' });
   }, []);
 
   return {
-    // Estado
-    linkedNid,
+    ...store,
     apiKey,
-    extractedData,
-    currentMeta,
-    currentModuleName,
-    schemaStatus,
-    status,
-    pageModules,
-    syncStatus,
-    syncDiff,
-    autoSyncNid,
-    envHost,
-    envName,
-
-    // Ações
     bindNid,
     clearNid,
     loadSchema,
@@ -280,9 +192,9 @@ export function useFigmaMessages() {
     showStatus,
     hideStatus,
     buildCleanData,
-    setCurrentModuleName,
+    setCurrentModuleName: (name) => useFigmaStore.setState({ currentModuleName: name }),
     onceMessage,
-    setSyncResult,
+    setSyncResult: store.setSyncResult,
     saveEnvSettings,
   };
 }
