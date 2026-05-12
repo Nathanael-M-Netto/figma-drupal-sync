@@ -11,7 +11,7 @@
  * env_host e env são injetados em todos os payloads PUT/POST que os aceitam.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.example.com';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io';
 const DEFAULT_ENV = 'ambiteste';
 
 /**
@@ -27,10 +27,18 @@ export function createDrupalClient(apiKey, { envHost = '', env = DEFAULT_ENV } =
     }
 
     const headers = { 'Content-Type': 'application/json' };
-    if (apiKey.startsWith('mock_jwt_') || apiKey.split('.').length === 3) {
+    // Tokens mock_jwt_* são do login local — a API real não aceita.
+    // Quando AUTH-02 ficar pronto, JWT real entra como Authorization: Bearer.
+    // Por enquanto: sempre usa X-TIM-Key (api key configurada no Settings).
+    if (apiKey.startsWith('mock_jwt_')) {
+      // Token mock não é aceito pela API real — usa a api key salva separadamente
+      throw new Error('API Key real não configurada. Vá em Dev Settings e insira a X-TIM-Key.');
+    } else if (apiKey.split('.').length === 3) {
+      // JWT real (3 partes separadas por .) — futura implementação Azure
       headers['Authorization'] = `Bearer ${apiKey}`;
     } else {
-      headers['X-CMS-Key'] = apiKey;
+      // API Key padrão (X-TIM-Key)
+      headers['X-TIM-Key'] = apiKey;
     }
 
     const options = { method, headers };

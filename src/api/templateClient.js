@@ -9,10 +9,33 @@
  * Inclui fallback mock para desenvolvimento offline.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.example.com';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io';
 
 // Flag para forçar mock (útil para dev sem backend)
 const FORCE_MOCK = false;
+
+/**
+ * Monta os headers de autenticação para a API.
+ *
+ * - Token mock (mock_jwt_*) → ignorado, API real não aceita
+ * - JWT real (3 partes separadas por .) → Authorization: Bearer (futuro: Azure)
+ * - Demais → X-TIM-Key (API key configurada no Settings) — formato atual da API v2
+ */
+function buildAuthHeaders(apiKey) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (!apiKey) return headers;
+
+  if (apiKey.startsWith('mock_jwt_')) {
+    // Token mock só serve pro login local — API real ignora
+    return headers;
+  }
+  if (apiKey.split('.').length === 3) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  } else {
+    headers['X-TIM-Key'] = apiKey;
+  }
+  return headers;
+}
 
 // ══════════════════════════════════════════════════════
 // MOCK DATA (usado como fallback quando a API não responde)
@@ -40,14 +63,7 @@ export async function fetchTemplates(apiKey, componentId = '') {
       endpoint += `?component_id=${encodeURIComponent(componentId)}`;
     }
 
-    const headers = { 'Content-Type': 'application/json' };
-    if (apiKey) {
-      if (apiKey.startsWith('mock_jwt_') || apiKey.split('.').length === 3) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-      } else {
-        headers['X-CMS-Key'] = apiKey;
-      }
-    }
+    const headers = buildAuthHeaders(apiKey);
 
     const response = await fetch(endpoint, { headers });
 
@@ -77,14 +93,7 @@ export async function fetchTemplateByName(templateName, apiKey) {
 
   try {
     const endpoint = `${API_BASE_URL}/api/templates/${encodeURIComponent(templateName)}`;
-    const headers = { 'Content-Type': 'application/json' };
-    if (apiKey) {
-      if (apiKey.startsWith('mock_jwt_') || apiKey.split('.').length === 3) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-      } else {
-        headers['X-CMS-Key'] = apiKey;
-      }
-    }
+    const headers = buildAuthHeaders(apiKey);
 
     const response = await fetch(endpoint, { headers });
 

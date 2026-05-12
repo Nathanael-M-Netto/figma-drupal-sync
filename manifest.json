@@ -12,12 +12,13 @@
     ],
     "networkAccess": {
         "allowedDomains": [
-            "https://api.example.com"
+            "https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io"
         ],
         "devAllowedDomains": [
             "http://localhost:8000",
-            "https://api.example.com"
+            "http://localhost:5173",
+            "https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io"
         ],
-        "reasoning": "O plugin requer acesso a rede para realizar o deploy e sync de dados diretamente com a API do CMS Headless."
+        "reasoning": "O plugin requer acesso a rede para realizar o deploy e sync de dados diretamente com a API do CMS Headless. Domínios de stage e prod e portal Azure (AUTH-01) serão adicionados quando as URLs forem definidas."
     }
 }

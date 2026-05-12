@@ -12,7 +12,7 @@
 
 const USE_MOCK = true;
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.example.com';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tim-agentic-cms-api-dev.gentlebeach-a211275a.eastus.azurecontainerapps.io';
 
 // ══════════════════════════════════════════════════════
 // MOCK DATA
