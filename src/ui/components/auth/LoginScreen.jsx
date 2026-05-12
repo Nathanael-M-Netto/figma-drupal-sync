@@ -20,8 +20,8 @@ export default function LoginScreen() {
     setError("");
 
     const backendUrl = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
-    // Gera um ID de sessão para fazer polling
-    const stateId = crypto.randomUUID();
+    // Gera um ID de sessão (usando fallback matemático caso crypto.randomUUID não esteja acessível em iframes limitados)
+    const stateId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).substring(2, 15) + Date.now().toString(36));
     const authUrl = backendUrl + "/auth/login?state_id=" + stateId;
 
     const width = 600;
