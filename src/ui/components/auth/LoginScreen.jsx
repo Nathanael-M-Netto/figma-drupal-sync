@@ -20,13 +20,59 @@ export default function LoginScreen() {
     setError("");
 
     const backendUrl = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
-    const authUrl = backendUrl + "/auth/login";
+    // Gera um ID de sessão para fazer polling
+    const stateId = crypto.randomUUID();
+    const authUrl = backendUrl + "/auth/login?state_id=" + stateId;
 
     const width = 600;
     const height = 800;
     const left = screen.width / 2 - width / 2;
     const top = screen.height / 2 - height / 2;
     window.open(authUrl, "EntraLogin", "width=" + width + ",height=" + height + ",top=" + top + ",left=" + left);
+
+    // No desktop do Figma o window.opener não funciona entre janelas do OS e o iframe.
+    // Usar polling para pegar a confirmação no backend.
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`${backendUrl}/auth/status?state_id=${stateId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === "success") {
+            clearInterval(pollInterval);
+            
+            const { token, user: backendUser } = data;
+            const user = {
+              id: backendUser.sub || backendUser.email,
+              name: backendUser.name || "User",
+              email: backendUser.preferred_username || backendUser.email || "",
+              role: "dev",
+            };
+
+            setUser(user);
+            setToken(token);
+
+            try {
+              postToFigma({ type: "save-session", user, token });
+            } catch (err) {}
+
+            addToast({ type: "success", message: "Bem-vindo, " + user.name + "!" });
+            navigate("home");
+            setIsLoading(false);
+          }
+        }
+      } catch (err) {
+        // Ignora erros de rede temporários
+      }
+    }, 2000);
+
+    // Cancelar interval após 3 minutos (timeout)
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      if (isLoading) {
+        setIsLoading(false);
+        setError("Login expirou. Tente novamente.");
+      }
+    }, 180000);
   };
 
   useEffect(() => {
